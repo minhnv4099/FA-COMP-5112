@@ -19,5 +19,5 @@ class Coordinator:
         return agent_cls(**agent_config)
 
     @classmethod
-    def build_graph(cls, nodes, state_schema):
-        return BaseGraph(name='The entire graph', nodes=nodes, state_schema=state_schema)
+    def build_graph(cls, nodes, **graph_config):
+        return BaseGraph(name='The entire graph', nodes=nodes, **graph_config)

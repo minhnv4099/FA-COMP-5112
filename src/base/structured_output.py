@@ -29,8 +29,6 @@ class PlannerOutput(BaseOutput):
 
     subtasks: Sequence[str] = Field(description="List of smaller subtasks after breaking a big task")
 
-    coding_task: bool = Field(description="Key passed to Coding Agent indicate to generate script. Always 'generate'")
-
 
 @register(type='structured_output', name='retriever')
 class RetrieverOutput(BaseOutput):
@@ -45,7 +43,8 @@ class RetrieverOutput(BaseOutput):
 class CodingOutput(BaseOutput):
     """Always use this output schema to response when generating code"""
 
-    script: str = Field(description="Generated script associated with given requirements")
+    script: str = Field(description="Generated script associated with given requirements"
+                                    "NOTE: only use 'script' as a key, no any additional prefix or/and suffix character")
 
 
 @register(type='structured_output', name='critic')

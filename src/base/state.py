@@ -3,7 +3,7 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import operator
-from typing import Sequence, Literal
+from typing import Sequence, Literal, Union
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
@@ -55,15 +55,7 @@ class RetrieverState(BaseState):
     """The input state for Retriever Agent"""
 
     queries: Annotated[Sequence[str], ...]
-    """List of subtasks this agent needs to retrieve relevant document for echo one.
-    One query is now one of three types of information:
-        - error: if the ``task`` is *fix*
-        - subtask: if the ``task`` is *generate*
-        - improvement: if the ``task`` is *improve*
-    """
-
-    coding_task: Annotated[Literal['generate', 'fix', 'improve'], ...]
-    """Whether use the agent to retrieve document to fix error or generate code or apply improvements"""
+    """List of queries this agent needs to retrieve relevant document for echo one."""
 
 
 @register(type='state', name='coding')
@@ -74,15 +66,28 @@ class CodingState(BaseState):
         2. Apply solutions
     """
 
-    retrieved_docs: Annotated[list[dict], ...]
-    """List ofs subtasks long with retrieved document(s)
+    queries: Annotated[list[Union[str, dict]], ...]
+    """List of queries
+    The queries would be one of 3 types:
+        - subtask: subtasks provided by planner agent
+        - error: error when execute script
+        - improvements: provided by critic or verification agents
+    """
+
+    has_docs: Annotated[bool, ...]
+    """Whether has documents to support coding. If not, call retriever agent to get relevant
+    document related to ``queries`` 
+    """
+
+    retrieved_docs: Annotated[dict, ...]
+    """Dictionary of retrieved documents with key is matching index with query in list
     ``
-        ({'query': ..., 'docs': [...])
+        {<int>: : <retrieved_docs>}
     ``
     """
 
     current_script: Annotated[str, ...]
-    """The latest script, used to apply fixes(critic) and solutions(verification)"""
+    """The latest script, used to apply fixes(critic), solutions(verification) and errors"""
 
     previous_scrips: Annotated[Sequence[str], ..., operator.add]
     """Previous script when generating code for list of subtasks"""
@@ -90,8 +95,8 @@ class CodingState(BaseState):
     coding_task: Annotated[Literal['fix', 'improve', 'generate'], ...]
     """Current task for Coding Agent: *generate script*, *fix error* and *apply improvements*"""
 
-    error: Annotated[str, "The yielded error when executing the script"]
-    """Errors that were produced when executing the script"""
+    # error: Annotated[str, "The yielded command when executing the script"]
+    # """Errors that were produced when executing the script"""
 
     # current_subtask: Annotated[str, ...]
     # """Current subtask coding agent are working on"""
@@ -102,9 +107,6 @@ class CodingState(BaseState):
     # previous_scripts: Annotated[list[str], ...]
     # """List of generated code of previous subtasks, helping model understand and be able to
     # point out connecting points between scripts/subtasks"""
-
-    # error_free: Annotated[Optional[bool], "If the generated code can execute without yield error"]
-    # """Whether free of error or not"""
 
 
 @register(type='state', name='critic')
@@ -194,5 +196,5 @@ class UrpOverallState(ArpInputState, ArpOutputState):
 
 # Share state
 @register(name='shared', type='state')
-class SharedState(PlannerState, RetrieverState):
+class SharedState(PlannerState, RetrieverState, CodingState):
     """The shared state contains all state channels"""

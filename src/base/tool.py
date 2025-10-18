@@ -41,11 +41,11 @@ class ScriptExecutorArgsSchema(BaseModel):
 
 
 class ScriptExecutor(VeryBaseTool):
-    """The tool with mission execute Python code, get any yielded error"""
+    """The tool with mission execute Python code, get any yielded command"""
 
     name: str = "Script Executor"
 
-    description: str = "Given script to run and get error"
+    description: str = "Given script to run and get command"
 
     args_schema: Optional[ArgsSchema] = ScriptExecutorArgsSchema
 
