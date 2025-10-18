@@ -1,23 +1,25 @@
 # @package agent.planner
 
 name: Planner
-use_model: True
 metadata:
   description: This node acts as an planner agent, helps to break given task into smaller subtasks
+
 input_schema:
   type: state
   name: planner
 output_schema:
   type: structured_output
   name: planner
+tool_schemas: [ ]
+
 edges:
   in_coming:
     - start
   out_going:
-    - retriever
+    - coding
 
-tool_schemas: [ ]
 
+use_model: True
 
 model_name: gpt-4o-mini
 model_provider: openai

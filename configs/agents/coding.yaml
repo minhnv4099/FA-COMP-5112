@@ -1,31 +1,39 @@
 # @package agent.coding
 
 name: Coding
-use_model: True
 metadata:
   description: This node acts as a coding agent, generating Python code
     based on given subtask and relevant document or/and code snippet
 
 anchor_folder: assets/blender_script/
+fix_error_attempts: 2
 
 input_schema:
   type: state
   name: coding
-
 output_schema:
   type: structured_output
   name: coding
+tool_schemas: [ ]
+
 edges:
   in_coming:
+    - planner
     - retriever
+  #    - critic
+  #    - verification
   out_going:
-    - retriever
-    - critic
+    - end
+#    - retriever
+#    - critic
+#    - verification
 
-tool_schemas: [ ]
+
+use_model: True
 
 model_name: gpt-4o
 model_provider: openai
 #model_api_key: <API-KEY>
+
 output_schema_as_tool: True
 chat_model: null

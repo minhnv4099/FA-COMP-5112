@@ -7,9 +7,5 @@ defaults:
   - agents/critic
   - agents/verification
   - hydra
+  - graph
   - _self_
-
-graph:
-  state_schema:
-    type: state
-    name: shared

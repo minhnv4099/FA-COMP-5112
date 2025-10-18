@@ -1,29 +1,31 @@
 # @package agent.retriever
 
 name: Retriever
-use_model: False
+metadata:
+  description: This node acts as a retriever agent, helps to retrieve relevant documents with given query from pre-defined vectorstore
+
 db_path: ${hydra:runtime.cwd}/vectorstores/faiss
 embedding_name: all-MiniLM-L6-v2.gguf2.f16.gguf
 
-metadata:
-  description: This node acts as a retriever agent, helps to retrieve relevant documents with given query from pre-defined vectorstore
 input_schema:
   type: state
   name: retriever
-edges:
-  in_coming:
-    - planner
-    - codding
-  out_going:
-    - coding
-
-tool_schemas: [ ]
 output_schema:
   type: structured_output
   name: retriever
+tool_schemas: [ ]
+
+edges:
+  in_coming:
+    - # retriever
+  out_going:
+    -
+
+
+use_model: False
 
 #model_name: gpt-4o-mini
 #model_provider: openai
 #model_api_key: <API-KEY>
-output_schema_as_tool: True
-chat_model: null
+#output_schema_as_tool: True
+#chat_model: null
