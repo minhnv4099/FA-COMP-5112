@@ -1,0 +1,198 @@
+#
+#  Copyright (c) 2025
+#  Minh NGUYEN <vnguyen9@lakeheadu.ca>
+#
+import operator
+from typing import Sequence, Literal
+
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
+from typing_extensions import Annotated, TypedDict
+
+from .mapping import register
+
+__all__ = [
+    "BaseState",
+    "PlannerState",
+    "RetrieverState",
+    "CodingState",
+    "CriticState",
+    "VerificationState",
+    "UserPromptUpState",
+    "IcpOverallState",
+    "IcpInputState",
+    "IcpOutputState",
+    "ArpOverallState",
+    "ArpInputState",
+    "ArpOutputState",
+    "UrpOverallState",
+    "UrpInputState",
+    "UrpOutputState"
+]
+
+
+class BaseState(TypedDict):
+    """The base class of state in graphs"""
+
+    id: Annotated[int, ...]
+    """ID of that state"""
+
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    """Sequence of messages of ``system``, ``user``, ``assistance``, ``tool``"""
+
+
+# Agent/Node input states
+@register(type='state', name='planner')
+class PlannerState(BaseState):
+    """The input state for Planner Agent"""
+
+    task: Annotated[str, ...]
+    """Given task provided by user prompt"""
+
+
+@register(type='state', name='retriever')
+class RetrieverState(BaseState):
+    """The input state for Retriever Agent"""
+
+    queries: Annotated[Sequence[str], ...]
+    """List of subtasks this agent needs to retrieve relevant document for echo one.
+    One query is now one of three types of information:
+        - error: if the ``task`` is *fix*
+        - subtask: if the ``task`` is *generate*
+        - improvement: if the ``task`` is *improve*
+    """
+
+    coding_task: Annotated[Literal['generate', 'fix', 'improve'], ...]
+    """Whether use the agent to retrieve document to fix error or generate code or apply improvements"""
+
+
+@register(type='state', name='coding')
+class CodingState(BaseState):
+    """The input state for Coding Agent
+    The Coding Agent has 2 main responsibilities:
+        1. Generate code (until no error)
+        2. Apply solutions
+    """
+
+    retrieved_docs: Annotated[list[dict], ...]
+    """List ofs subtasks long with retrieved document(s)
+    ``
+        ({'query': ..., 'docs': [...])
+    ``
+    """
+
+    current_script: Annotated[str, ...]
+    """The latest script, used to apply fixes(critic) and solutions(verification)"""
+
+    previous_scrips: Annotated[Sequence[str], ..., operator.add]
+    """Previous script when generating code for list of subtasks"""
+
+    coding_task: Annotated[Literal['fix', 'improve', 'generate'], ...]
+    """Current task for Coding Agent: *generate script*, *fix error* and *apply improvements*"""
+
+    error: Annotated[str, "The yielded error when executing the script"]
+    """Errors that were produced when executing the script"""
+
+    # current_subtask: Annotated[str, ...]
+    # """Current subtask coding agent are working on"""
+    #
+    # code_snippet: Annotated[str, ...]
+    # """Retrieved documents associated with `current subtask`"""
+    #
+    # previous_scripts: Annotated[list[str], ...]
+    # """List of generated code of previous subtasks, helping model understand and be able to
+    # point out connecting points between scripts/subtasks"""
+
+    # error_free: Annotated[Optional[bool], "If the generated code can execute without yield error"]
+    # """Whether free of error or not"""
+
+
+@register(type='state', name='critic')
+class CriticState(BaseState):
+    """The input state for Critic Agent"""
+
+    rendered_images: Annotated[Sequence[str], ...]
+    """Paths to rendered images of current assets"""
+
+    validating_prompt: Annotated[str, "Pre-defined prompt in order to check"]
+    """The pre-defined validating prompt that instruct the model to recognize flaws of objects"""
+
+    TASK: Annotated[str, ...]
+    """The original task given by user"""
+
+
+@register(type='state', name='verification')
+class VerificationState(BaseState):
+    """The input state for Verification Agent"""
+
+    rendered_images: Annotated[Sequence[str], ...]
+    """Sequence of rendered image paths after criticising"""
+
+    critic_and_fixes: Annotated[list[list[str]], ...]
+    """Sequence of critics and fixes provided by the `critic agent`"""
+
+
+@register(type='state', name='user')
+class UserPromptUpState(BaseState):
+    """The input state for User Agent"""
+
+    follow_up_prompts: Annotated[Sequence[str], ...]
+    """Additional prompts provided by user"""
+
+    current_code: Annotated[str, "The mose recent code"]
+    """The mose recent generated script after the first two phases in the process"""
+
+    terminated: Annotated[bool, ...]
+    """Whether user terminates the process"""
+
+
+# Phase/Subgraph input states
+class IcpInputState(PlannerState, RetrieverState, CodingState):
+    """The input schema for the Initial Creation Phase"""
+
+
+class IcpOutputState(BaseState):
+    """The output schema of the Initial Creation Phase"""
+
+    error_free_code: Annotated[str, ...]
+    """The generated code without yielding any error"""
+
+
+class IcpOverallState(IcpInputState, IcpOutputState):
+    """The state schema of the Initial Creation Phase"""
+
+
+class ArpInputState(IcpOutputState):
+    """The input schema of the Auto Refinement Phase"""
+
+
+class ArpOutputState(BaseState):
+    """The output schema of the Auto Refinement Phase"""
+
+    refined_code: Annotated[str, ...]
+    """The script after being refined by critic and verification agents"""
+
+
+class ArpOverallState(ArpInputState, ArpOutputState):
+    """The state schema of the Auto Refinement Phase"""
+
+
+class UrpInputState(ArpOutputState):
+    """The input schema of the User-guided Refinement Phase"""
+
+
+class UrpOutputState(BaseState):
+    """The output schema of the User-guided Refinement Phase"""
+
+    user_guided_code: Annotated[str, ...]
+    """The script after the last phase"""
+
+
+class UrpOverallState(ArpInputState, ArpOutputState):
+    """The state schema of the User-guided Refinement Phase"""
+
+
+# Share state
+@register(name='shared', type='state')
+class SharedState(PlannerState, RetrieverState):
+    """The shared state contains all state channels"""
