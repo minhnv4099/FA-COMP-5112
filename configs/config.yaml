@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  - agents/planner
+  - agents/retriever
+  - agents/coding
+  - agents/critic
+  - agents/verification
+  - hydra
+  - _self_
+
+graph:
+  state_schema:
+    type: state
+    name: shared

@@ -1,0 +1,26 @@
+# @package agent.critic
+
+name: Critic
+use_model: True
+metadata:
+  description: This node acts as a critic agent, analyze,
+    points out flaws in given images and gives fixes
+input_schema:
+  type: state
+  name: critic
+edges:
+  in_coming:
+    - coding
+  out_going:
+    - verification
+
+tool_schemas: [ ]
+output_schema:
+  type: structured_output
+  name: critic
+
+model_name: gpt-4o-mini
+model_provider: openai
+#model_api_key: <API-KEY>
+output_schema_as_tool: True
+chat_model: null
