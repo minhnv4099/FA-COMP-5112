@@ -10,6 +10,8 @@ AGENT_MAPPING = dict()
 
 STATE_MAPPING = dict()
 
+CONTEXT_MAPPING = dict()
+
 TOOL_MAPPING = dict()
 
 STRUCTURED_OUTPUT_MAPPING = dict()
@@ -21,7 +23,8 @@ MAPPING = {
     'state': STATE_MAPPING,
     'tool': TOOL_MAPPING,
     'structured_output': STRUCTURED_OUTPUT_MAPPING,
-    'graph': GRAPH_MAPPING
+    'graph': GRAPH_MAPPING,
+    'context': CONTEXT_MAPPING,
 }
 
 

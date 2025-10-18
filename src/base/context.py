@@ -4,7 +4,10 @@
 #
 from typing_extensions import TypedDict
 
+from src.base.mapping import register
 
+
+@register(name='shared', type='context')
 class SharedContext(TypedDict):
     """This Context class provides additional information to nodes"""
 
