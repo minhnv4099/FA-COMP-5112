@@ -2,7 +2,9 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from typing import Optional
+import logging
+import os
+from typing import Optional, Union
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import (
@@ -11,12 +13,16 @@ from langchain_core.prompts import (
     HumanMessagePromptTemplate
 )
 from langgraph.config import RunnableConfig
+from langgraph.graph.state import END
 from langgraph.runtime import Runtime
-from langgraph.types import Command, Send
+from langgraph.types import Command
 from typing_extensions import override, Any
 
 from src.base.agent import AgentAsNode, InputT, register
-from src.base.tool import execute_script
+from src.base.exception import NotCompletedError, ScriptWithError
+from src.base.tool import execute_script, write_script
+
+logger = logging.getLogger(__name__)
 
 
 @register(type="agent", name='coding')
@@ -41,6 +47,7 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             anchor_folder: str = None,
             system_prompt: str = None,
             human_prompt: str = None,
+            fix_error_attempts: int = 5,
             **kwargs
     ):
         super().__init__(
@@ -90,6 +97,8 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
         self.human_apply_improvements_prompt = HumanMessagePromptTemplate.from_template("""""")
         self.human_fix_error_prompt = HumanMessagePromptTemplate.from_template("""""")
 
+        self.fix_error_attempts = fix_error_attempts
+        self.fix_error_tries = 0
         self.subtask_offset = 0
 
     @override
@@ -100,21 +109,37 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             context: Optional[Runtime] = None,
             config: Optional[Runtime[RunnableConfig]] = None,
             **kwargs
-    ):
+    ) -> Union[dict, Command]:
         # --------------- model works ---------------
-        context = runtime.context
-        print("coding", state, sep='\n\t')
-        if state['coding_task'] == 'generate':
-            script = self._generate_script(state, context)
-        elif state['coding_task'] == "improve":
-            script = self._apply_improvements(state, context)
-        else:
-            script = self._fix_error(state, context=context)
+        # logger.info(f"coding {self.subtask_offset} \n\t {state}", )
+        self.subtask_offset += 1
+        if not state['has_docs']:
+            return Command(
+                goto='retriever',
+                update={
+                    'coding_task': state['coding_task'],
+                    'queries': state['queries']
+                },
+            )
+        try:
+            if state['coding_task'] == 'generate':
+                script = self._generate_script(state, context)
+            elif state['coding_task'] == "improve":
+                script = self._apply_improvements(state, context)
+            else:
+                script = self._fix_error(state, context)
         # -------------------------------------------
-        if isinstance(script, (Send, Command)):
-            return script
+        except ScriptWithError as e:
+            """Recall Coding Agent if catch command when executing script
+            Before fix code, call Retriever Agent to get relevant documents
+            `e.command` is a command call retriever with command and command script
+            """
+            return e.command
 
-        return {"script": script}
+        return Command(
+            update={'current_script': script},
+            goto=END
+        )
 
     def _prepare_by_adding_human_prompt(self, human_prompt):
         return ChatPromptTemplate([
@@ -124,22 +149,32 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
 
     def _fix_error(self, state, context) -> str:
         chat_prompt = self._prepare_by_adding_human_prompt(self.human_fix_error_prompt)
-        print(state)
-        exit()
-        formatted_prompt = chat_prompt.invoke({...})
+
+        formatted_prompt = chat_prompt.invoke({
+            'script': state['current_script'],
+            'command': state['queries'],
+            'docs': state['retrieved_docs']
+        })
+
         # ---------------------------------------------------
-        improved_script = self._write_code(formatted_prompt, context)
+        fixed_script = self._write_code(formatted_prompt, context)
         # ---------------------------------------------------
 
-        return improved_script
+        return fixed_script
 
     def _apply_improvements(self, state, context):
+        raise NotCompletedError
+
         chat_prompt = ChatPromptTemplate([
             self.system_prompt,
             self.human_apply_improvements_prompt,
         ])
 
-        formatted_prompt = chat_prompt.invoke({...})
+        formatted_prompt = chat_prompt.invoke({
+            'script': state['current_script'],
+            'improvements': state['queries'],
+            'docs': state['retrieved_docs'],
+        })
         # ---------------------------------------------------
         improved_script = self._write_code(formatted_prompt, context)
         # ---------------------------------------------------
@@ -151,7 +186,13 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             self.human_generate_code_prompt,
         ])
         subscripts = []
-        for i, (query, docs) in enumerate(state['retrieved_docs']):
+        for i, query in enumerate(state['queries']):
+            docs = state['retrieved_docs'][i]
+
+            # -----------precess docs -----------
+            # here
+            # -----------------------------------
+
             formatted_prompt = chat_prompt.invoke({
                 "subtask": query,
                 "docs": docs,
@@ -160,34 +201,41 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             # ---------------------------------------------------
             message = self._write_code(formatted_prompt, context)
             # ---------------------------------------------------
-            return message
+            subscripts.append(message)
         return subscripts[-1]
 
     def _write_code(self, formatted_prompt, context):
         while True:
-            # response = self.chat_model.invoke(formatted_prompt)
-            # print(response.tool_calls[-1]['args'])
-            # try:
-            #     generated_script = response.tool_calls[-1]['args']['script']
-            # except KeyError as e:
-            #     exit()
-            #
-            # anchor_file = os.path.join(self.anchor_folder, f"anchor.py")
-            # write_script.invoke({
-            #     "script": generated_script,
-            #     "file_path": anchor_file
-            # })
-
-            result = execute_script.invoke(input={"script": "assets/blender_script/anchor_2.py"})
+            generated_script = self._stimulate_model_invoke()
+            anchor_file = os.path.join(self.anchor_folder, f"fake_script.py")
+            write_script.invoke({
+                "script": generated_script,
+                "file_path": anchor_file
+            })
+            result = execute_script.invoke(input={"script": anchor_file})
             error = result['error']
-            if len(error) == 0:
-                return None
+
+            if len(error) == 0 or self.fix_error_tries == self.fix_error_attempts:
+                # Test script would be fixed successfully
+                generated_script = 'import sys'
+                return generated_script
             else:
-                # context['coding_task'] = 'fix'
-                return Command(
+                self.fix_error_tries += 1
+                raise ScriptWithError(command=Command(
                     goto='retriever',
                     update={
                         'coding_task': 'fix',
-                        'queries': [error, ]
+                        'queries': [error, ],
+                        'current_script': generated_script
                     },
-                )
+                ))
+
+    def _stimulate_model_invoke(self):
+        return "import os pri"
+
+    def _chat_model_invoke(self, formatted_prompt, context):
+        response = self.chat_model.invoke(formatted_prompt)
+        try:
+            generated_script = response.tool_calls[-1]['args']['script']
+        except KeyError as e:
+            exit()

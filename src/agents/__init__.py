@@ -7,7 +7,7 @@ from .critic import CriticAgent
 from .planner import PlannerAgent
 from .retriever import RetrieverAgent
 from .user import UserAgent
-from .verifier import VerificationAgent
+from .verification import VerificationAgent
 
 __all__ = [
     "PlannerAgent",

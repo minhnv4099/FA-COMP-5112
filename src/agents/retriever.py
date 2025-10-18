@@ -2,7 +2,8 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from typing import Any, Literal, Optional
+import logging
+from typing import Any, Literal, Optional, Union
 
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -13,6 +14,8 @@ from typing_extensions import override
 
 from src.base.agent import AgentAsNode, register
 from src.base.typing import InputT
+
+logging.getLogger(__name__)
 
 
 @register(type="agent", name='retriever')
@@ -73,22 +76,28 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
             context: Optional[Runtime] = None,
             config: Optional[Runtime[RunnableConfig]] = None,
             **kwargs
-    ) -> Command[Literal['coding']]:
-        print("retrieve", state, sep='\n\t')
-        query_docs = list()
+    ) -> Union[dict, Command[Literal['coding']]]:
+        # logging.info(f"retrieve \n\t{state}")
+        retrieved_docs: dict[int, list] = dict()
         for i, query in enumerate(state['queries']):
             docs = self.retrieving_engine.invoke(query)
-            query_docs.append((query, [doc.page_content for doc in docs]))
+            retrieved_docs[i] = [doc.page_content for doc in docs]
 
         update_state = {
-            'coding_task': state['coding_task'],
-            'retrieved_docs': query_docs,
+            'has_docs': True,
+            'retrieved_docs': retrieved_docs,
             "messages":
                 {'role': f"assistant",
-                 "content": f"Retriever Agent result documents when '{runtime.context['coding_task']}'"}
+                 "content": f"Retriever Agent result documents when"}
         }
+        # return update_state
 
         return Command(
             update=update_state,
-            goto="coding"
+            goto='coding'
         )
+
+        if state['coding_task'] == 'fix':
+            update_state['command'] = state['queries']
+        elif state['coding_task'] == 'improve':
+            update_state['improvements'] = state['queries']

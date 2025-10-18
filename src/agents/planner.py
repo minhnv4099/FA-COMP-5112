@@ -66,14 +66,13 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
         # response = self.chat_model.invoke(state['task'])
         # tool_args = response.tool_calls[-1]['args']
         # -------------------------------------------------
-        desired_output = dict()
-        desired_output['queries'] = self.anchor_call()
-        desired_output["messages"] = {'role': "assistant", "content": "Planner Agent returned results"}
-        desired_output['coding_task'] = 'generate'
-
-        runtime.context['coding_task'] = 'generate'
+        update_state = dict()
+        update_state['queries'] = self.anchor_call()
+        update_state['has_docs'] = False
+        update_state["messages"] = {'role': "assistant", "content": "Planner Agent returned results"}
+        update_state['coding_task'] = 'generate'
 
         return Command(
-            update=desired_output,
-            goto='retriever'
+            update=update_state,
+            goto='coding'
         )
