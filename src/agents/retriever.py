@@ -2,17 +2,21 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from typing import Any
+from typing import Any, Literal, Optional
 
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_core.documents import Document
+from langgraph.config import RunnableConfig
+from langgraph.runtime import Runtime
+from langgraph.types import Command
 from typing_extensions import override
 
-from src.base.agent import AgentAsNode
+from src.base.agent import AgentAsNode, register
+from src.base.typing import InputT
 
 
-class RetrieverAgent(AgentAsNode, name="Retriever"):
+@register(type="agent", name='retriever')
+class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
     """
     The Retriever Agent class
     """
@@ -58,15 +62,33 @@ class RetrieverAgent(AgentAsNode, name="Retriever"):
         """Validate retrieving settings"""
 
     @override
-    def validate_model(self, llm_kwargs: dict):
+    def validate_model(self):
         raise NotImplementedError
 
     @override
-    def __call__(self, state, **kwargs):
-        task_docs = dict()
-        for i, subtask in enumerate(state['subtasks']):
-            docs: Document = self.retrieving_engine.invoke(subtask)[-1]
-            docs = docs.page_content
-            task_docs[i] = (subtask, docs)
+    def __call__(
+            self,
+            state: InputT | dict,
+            runtime: Optional[Runtime] = None,
+            context: Optional[Runtime] = None,
+            config: Optional[Runtime[RunnableConfig]] = None,
+            **kwargs
+    ) -> Command[Literal['coding']]:
+        print("retrieve", state, sep='\n\t')
+        query_docs = list()
+        for i, query in enumerate(state['queries']):
+            docs = self.retrieving_engine.invoke(query)
+            query_docs.append((query, [doc.page_content for doc in docs]))
 
-        return task_docs
+        update_state = {
+            'coding_task': state['coding_task'],
+            'retrieved_docs': query_docs,
+            "messages":
+                {'role': f"assistant",
+                 "content": f"Retriever Agent result documents when '{runtime.context['coding_task']}'"}
+        }
+
+        return Command(
+            update=update_state,
+            goto="coding"
+        )

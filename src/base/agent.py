@@ -4,67 +4,25 @@
 #
 from typing import Optional, Union, Generic, Any
 
-from langchain.chat_models import init_chat_model
-from langchain.chat_models.base import BaseChatModel
-from langgraph.config import RunnableConfig
+from langchain.chat_models.base import BaseChatModel, init_chat_model
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langgraph.runtime import Runtime
-from pydantic import BaseModel
-from typing_extensions import Annotated, TypeVar
 
-from .state import BaseState
-
-StateT = TypeVar("StateT", bound=BaseState, default=BaseState)
-ContextT = TypeVar("ContextT", bound=Union[BaseState, None], default=None)
-InputT = TypeVar("InputT", bound=BaseState, default=BaseState)
-OutputT = TypeVar("OutputT", bound=BaseState, default=BaseState)
-
-
-class AgentWithoutLLM(BaseModel):
-    name: str
-    """Name of the unique name/node, used to identify node in a graph"""
-
-    metadata: dict
-    """Metadata of node used to provide additional information"""
-
-    input_schema: Any
-    """Input schema the node expect"""
-
-    edges: dict[str, tuple[str]]
-    """Dictionary contains in-coming and out-going edge to and from this node"""
-
-    tool_schemas: list
-    """List of tool schemas equipped to the agent"""
-
-
-class AgentAsNodeConfig(AgentWithoutLLM):
-    """
-    The Agent as Node Config class
-    """
-    output_schema: Any
-    """Enforced schema so that models returns"""
-
-    model_name: str
-    """Name of model to call API"""
-
-    model_provide: str
-    """Provider of the model"""
-
-    model_api_key: str
-    """API KEY"""
-
-    output_schema_as_tool: bool
-    """Use output_schema as a tool"""
-
-    chat_model: Any
-    """Pre-defined chat mode"""
+from .mapping import register
+from .typing import StateT, InputT, OutputT, ContextT
+from ..utils import fetch_schema
 
 
 class BaseAgent:
     """The Base Agent class"""
-    name: Annotated[str, "Name of the agent"]
+    name: str
     """Unique name of the class"""
 
+    use_model: bool
+    """Whether the agent uses model as brain"""
 
+
+@register(type="agent", name='base')
 class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     """The Agent As Node class
 
@@ -78,7 +36,14 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     """Input state schema to the node"""
 
     edges: dict[str, tuple] = None
-    """In-coming and out-going edges connected with this node"""
+    """In-coming and out-going edges connected with this node
+    ```
+    {
+        "in_coming" : ('name_node_1', 'name_node_2'),
+        "out_going" : ('name_node_3', 'name_node_4')
+    }
+    ```
+    """
 
     tool_schemas: list = []
     """Tools equip to LLM (chat model)"""
@@ -101,16 +66,17 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     chat_model: BaseChatModel = None
     """The chat model, useful when it's shared across multiple nodes/places"""
 
-    def __init_subclass__(cls, name: str = None, **kwargs):
+    def __init_subclass__(cls, name: str = None, use_model: bool = True):
         cls.name = name
+        cls.use_model = use_model
 
     def __init__(
             self,
             metadata: dict = None,
-            input_schema: InputT = None,
+            input_schema: InputT | dict = None,
             edges: dict[str, tuple[str]] = None,
-            tool_schemas: list = None,
-            output_schema: Any = None,
+            tool_schemas: list | list[dict] = None,
+            output_schema: OutputT | list[OutputT] | list[dict] = None,
             model_name: str = None,
             model_provider: str = None,
             model_api_key: str = None,
@@ -126,24 +92,26 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         self.model_api_key = model_api_key
 
         self.edges = edges
-        self.input_schema = input_schema
+        self.input_schema = fetch_schema(input_schema)
+        """Only input schema"""
         self.tool_schemas = tool_schemas
         self.output_schema = output_schema
         self.output_schema_as_tool = output_schema_as_tool
 
-        if self.name.lower() != 'retriever':
+        if self.use_model:
+            self.validate_schema()
             self.validate_model()
 
     def validate_model(self):
         # Useful when using an identical chat model
         if not self.chat_model:
             assert self.model_name, "A model name must be provided (e.g. gpt-4o, gpt-4o-mini)"
-            self.chat_model = init_chat_model(model=self.model_name, model_provider=self.model_provider)
+            self.chat_model = init_chat_model(
+                model=self.model_name,
+                model_provider=self.model_provider,
+                rate_limiter=InMemoryRateLimiter(requests_per_second=0.1, check_every_n_seconds=0.1, max_bucket_size=10)
 
-        self.validate_schema()
-        self.tool_schemas = self.tool_schemas or []
-        self.output_schema = self.output_schema or []
-        self.tool_schemas.extend(self.output_schema)
+            )
 
         self.chat_model = self.chat_model.bind_tools(self.tool_schemas)
 
@@ -152,17 +120,26 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         ...
 
     def validate_schema(self):
-        if not isinstance(self.tool_schemas, list) and self.tool_schemas:
+        if self.tool_schemas and not isinstance(self.tool_schemas, list):
             self.tool_schemas = [self.tool_schemas, ]
-        if not isinstance(self.output_schema, list) and self.output_schema:
+        if self.output_schema and not isinstance(self.output_schema, list):
             self.output_schema = [self.output_schema, ]
+
+        self.tool_schemas = self.tool_schemas or []
+        self.output_schema = self.output_schema or []
+        self.tool_schemas.extend(self.output_schema)
+
+        self.tool_schemas = [
+            fetch_schema(tool_schema)
+            for tool_schema in self.tool_schemas
+        ]
 
     def __call__(
             self,
-            state: InputT,
-            config: Optional[RunnableConfig] = None,
-            context: Optional[ContextT] = None,
-            runtime: Runtime = None,
+            state: InputT | dict,
+            runtime: Optional[Runtime] = None,
+            context: Optional[Runtime] = None,
+            config: Optional[Runtime] = None,
             **kwargs
     ):
         """The abstractive node function receives state input and returns update state
@@ -186,5 +163,5 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             Update state
         """
         # -------------------------------
-        # -------------------------------
         raise NotImplementedError
+        # -------------------------------
