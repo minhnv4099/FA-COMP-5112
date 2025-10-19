@@ -1,0 +1,29 @@
+# @package agent.verification
+
+name: Verification
+metadata:
+  description: This node acts as a verification agent, verifies whether
+    fixes provided by critic agent are successfully solved and suggest solutions if not
+
+input_schema:
+  type: state
+  name: verification
+output_schema:
+  type: structured_output
+  name: verification
+tool_schemas: [ ]
+
+edges:
+  in_coming:
+    - coding
+  out_going:
+    - coding
+    - end
+
+use_model: True
+
+model_name: gpt-4o-mini
+model_provider: openai
+#model_api_key: <API-KEY>
+output_schema_as_tool: True
+chat_model: null
