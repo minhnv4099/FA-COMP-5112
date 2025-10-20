@@ -11,4 +11,6 @@ from src.base.mapping import register
 class SharedContext(TypedDict):
     """This Context class provides additional information to nodes"""
 
-    coding_task: str
+    coding_task: str | None
+
+    previous_scripts: list

@@ -2,15 +2,15 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from typing import Optional, Union, Generic, Any
+from typing import Union, Generic, Any
 
 from langchain.chat_models.base import BaseChatModel, init_chat_model
 from langchain_core.rate_limiters import InMemoryRateLimiter
-from langgraph.runtime import Runtime
+from langgraph.config import RunnableConfig
 
 from .mapping import register
 from .typing import StateT, InputT, OutputT, ContextT
-from ..utils import fetch_schema
+from ..utils.schema import fetch_schema
 
 
 class BaseAgent:
@@ -134,12 +134,22 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             for tool_schema in self.tool_schemas
         ]
 
+    def anchor_call(self):
+        """Use this function to generate virtual data that match output schema in reality.
+        The main purpose is just test workflow but not call chat model really
+        """
+        raise NotImplementedError
+
+    def chat_model_call(self, *args, **kwargs):
+        """This method actually calls chat model"""
+        raise NotImplementedError
+
     def __call__(
             self,
             state: InputT | dict,
-            runtime: Optional[Runtime] = None,
-            context: Optional[Runtime] = None,
-            config: Optional[Runtime] = None,
+            runtime: RunnableConfig = None,
+            context: RunnableConfig = None,
+            config: RunnableConfig = None,
             **kwargs
     ):
         """The abstractive node function receives state input and returns update state

@@ -2,7 +2,6 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import operator
 from typing import Sequence, Literal, Union
 
 from langchain_core.messages import BaseMessage
@@ -57,6 +56,9 @@ class RetrieverState(BaseState):
     queries: Annotated[Sequence[str], ...]
     """List of queries this agent needs to retrieve relevant document for echo one."""
 
+    coding_task: Annotated[Literal['fix', 'improve', 'generate'], ...]
+    """Current task for Coding Agent: *generate script*, *fix error* and *apply improvements*"""
+
 
 @register(type='state', name='coding')
 class CodingState(BaseState):
@@ -89,11 +91,15 @@ class CodingState(BaseState):
     current_script: Annotated[str, ...]
     """The latest script, used to apply fixes(critic), solutions(verification) and errors"""
 
-    previous_scrips: Annotated[Sequence[str], ..., operator.add]
+    previous_scripts: Annotated[Sequence[str], ...,]
     """Previous script when generating code for list of subtasks"""
 
     coding_task: Annotated[Literal['fix', 'improve', 'generate'], ...]
     """Current task for Coding Agent: *generate script*, *fix error* and *apply improvements*"""
+
+    is_sub_call: Annotated[bool, ...]
+
+    caller: Annotated[str, ...]
 
     # error: Annotated[str, "The yielded command when executing the script"]
     # """Errors that were produced when executing the script"""
@@ -113,13 +119,13 @@ class CodingState(BaseState):
 class CriticState(BaseState):
     """The input state for Critic Agent"""
 
-    rendered_images: Annotated[Sequence[str], ...]
-    """Paths to rendered images of current assets"""
+    current_script: Annotated[Sequence[str], ...]
+    """Error-free script after the Initial Creation Phase"""
 
-    validating_prompt: Annotated[str, "Pre-defined prompt in order to check"]
-    """The pre-defined validating prompt that instruct the model to recognize flaws of objects"""
+    validating_prompt: Annotated[str, ...]
+    """The pre-defined validating prompt that instruct the model to evaluate objects"""
 
-    TASK: Annotated[str, ...]
+    task: Annotated[str, ...]
     """The original task given by user"""
 
 
@@ -196,5 +202,5 @@ class UrpOverallState(ArpInputState, ArpOutputState):
 
 # Share state
 @register(name='shared', type='state')
-class SharedState(PlannerState, RetrieverState, CodingState):
+class SharedState(PlannerState, RetrieverState, CodingState, CriticState):
     """The shared state contains all state channels"""

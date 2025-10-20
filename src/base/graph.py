@@ -7,16 +7,17 @@ import os
 from pathlib import Path
 from typing import Optional, Union
 
+from langchain_core.runnables.graph import MermaidDrawMethod
 from langgraph.config import RunnableConfig
 from langgraph.graph import START, END
 from langgraph.graph.state import StateGraph, CompiledStateGraph
 from typing_extensions import Generic
 
-from .context import SharedContext
+from src.base.exception import NotFoundEdgeError
 from .dirs import ASSETS_DIR
 from .mapping import register
 from .typing import StateT, ContextT, InputT, OutputT, NodeT
-from ..utils import fetch_schema
+from ..utils.schema import fetch_schema
 
 logger = logging.getLogger(__name__)
 
@@ -68,18 +69,18 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             **kwargs,
     ):
         self.name = name
-
         self.state_schema = fetch_schema(state_schema)
-        self.context_schema = context_schema
+        self.context_schema = fetch_schema(context_schema)
         self.input_schema = input_schema
         self.output_schema = output_schema
 
         self.nodes = nodes
         if not self.nodes:
             logger.critical("No any nodes")
+
         self.graph = StateGraph[StateT, ContextT, InputT, OutputT](
             state_schema=self.state_schema,
-            context_schema=SharedContext,
+            context_schema=self.context_schema,
         )
 
     @property
@@ -91,7 +92,10 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             logger.critical(f"The graph isn't compiled yet. Compile it first!")
             return
         try:
-            image_bytes = self.complied_graph.get_graph().draw_mermaid_png()
+            image_bytes = self.complied_graph.get_graph().draw_mermaid_png(
+                max_retries=5, retry_delay=2.,
+                draw_method=MermaidDrawMethod.PYPPETEER
+            )
             if not file_path:
                 os.makedirs(ASSETS_DIR, exist_ok=True)
                 file_path = os.path.join(ASSETS_DIR, f"{self.name}.png")
@@ -101,7 +105,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
             logger.info(f"Write image of graph into '{file_path}'")
         except ValueError as e:
-            pass
+            print(e)
 
     def standardize_name_node(self, name):
         return name.replace(' ', '_').lower()
@@ -123,12 +127,21 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
                 if isinstance(in_vertex, str):
                     if "start" in in_vertex:
                         in_vertex = START
-                        self.graph.add_edge(start_key=in_vertex, end_key=name_node)
+                    self._add_edge(start_key=in_vertex, end_key=name_node)
             for out_vertex in node.edges['out_going']:
                 if isinstance(out_vertex, str):
                     if "end" in out_vertex:
                         out_vertex = END
                     self.graph.add_edge(start_key=name_node, end_key=out_vertex)
+
+    def _add_conditional_edges(self):
+        raise NotImplementedError
+
+    def _add_edge(self, start_key, end_key):
+        try:
+            self.graph.add_edge(start_key, end_key)
+        except NotFoundEdgeError:
+            pass
 
     def init_graph(self):
         """Initialize the graph by adding nodes, connect them"""
