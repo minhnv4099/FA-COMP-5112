@@ -3,17 +3,18 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import logging
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Union
 
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
 from langgraph.config import RunnableConfig
 from langgraph.runtime import Runtime
-from langgraph.types import Command
+from langgraph.types import Command, Send
 from typing_extensions import override
 
 from src.base.agent import AgentAsNode, register
 from src.base.typing import InputT
+from src.base.utils import DirectionRouter
 
 logging.getLogger(__name__)
 
@@ -72,11 +73,11 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
     def __call__(
             self,
             state: InputT | dict,
-            runtime: Optional[Runtime] = None,
-            context: Optional[Runtime] = None,
-            config: Optional[Runtime[RunnableConfig]] = None,
+            runtime: Runtime[RunnableConfig] = None,
+            context: Runtime[RunnableConfig] = None,
+            config: RunnableConfig = None,
             **kwargs
-    ) -> Union[dict, Command[Literal['coding']]]:
+    ) -> Union[dict, Command[Literal['coding']], Send]:
         # logging.info(f"retrieve \n\t{state}")
         retrieved_docs: dict[int, list] = dict()
         for i, query in enumerate(state['queries']):
@@ -84,20 +85,23 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
             retrieved_docs[i] = [doc.page_content for doc in docs]
 
         update_state = {
+            'caller': 'retriever',
             'has_docs': True,
+            'is_sub_call': True,
+            'coding_task': state['coding_task'],
+            'queries': state['queries'],
             'retrieved_docs': retrieved_docs,
             "messages":
                 {'role': f"assistant",
-                 "content": f"Retriever Agent result documents when"}
+                 "content": f"Retriever Agent result documents when '{state['coding_task']}'"}
         }
         # return update_state
-
-        return Command(
-            update=update_state,
-            goto='coding'
+        return DirectionRouter.go_next(
+            method='command',
+            state=update_state,
+            node='coding'
         )
 
-        if state['coding_task'] == 'fix':
-            update_state['command'] = state['queries']
-        elif state['coding_task'] == 'improve':
-            update_state['improvements'] = state['queries']
+    @override
+    def chat_model_call(self, query, *args, **kwargs):
+        docs = self.retrieving_engine.invoke(query)
