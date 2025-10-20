@@ -6,7 +6,7 @@ metadata:
     based on given subtask and relevant document or/and code snippet
 
 anchor_folder: assets/blender_script/
-fix_error_attempts: 2
+fix_error_attempts: 1
 
 input_schema:
   type: state
@@ -17,13 +17,12 @@ output_schema:
 tool_schemas: [ ]
 
 edges:
-  in_coming:
-    - planner
-    - retriever
+  in_coming: [ ]
+  #    - planner
+  #    - retriever
   #    - critic
   #    - verification
-  out_going:
-    - end
+  out_going: [ ]
 #    - retriever
 #    - critic
 #    - verification

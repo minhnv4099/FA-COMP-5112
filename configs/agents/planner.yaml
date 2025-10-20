@@ -15,8 +15,8 @@ tool_schemas: [ ]
 edges:
   in_coming:
     - start
-  out_going:
-    - coding
+  out_going: [ ]
+#    - coding
 
 
 use_model: True

@@ -16,10 +16,10 @@ output_schema:
 tool_schemas: [ ]
 
 edges:
-  in_coming:
-    - # retriever
-  out_going:
-    -
+  in_coming: [ ]
+  #    - coding
+  out_going: [ ]
+#    - coding
 
 
 use_model: False
