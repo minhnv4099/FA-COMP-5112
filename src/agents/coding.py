@@ -4,7 +4,8 @@
 #
 import logging
 import os
-from typing import Optional, Union
+from copy import deepcopy
+from typing import Union
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import (
@@ -14,13 +15,13 @@ from langchain_core.prompts import (
 )
 from langgraph.config import RunnableConfig
 from langgraph.graph.state import END
-from langgraph.runtime import Runtime
-from langgraph.types import Command
+from langgraph.types import Command, Send
 from typing_extensions import override, Any
 
 from src.base.agent import AgentAsNode, InputT, register
-from src.base.exception import NotCompletedError, ScriptWithError
+from src.base.exception import ScriptWithError
 from src.base.tool import execute_script, write_script
+from src.base.utils import DirectionRouter
 
 logger = logging.getLogger(__name__)
 
@@ -79,11 +80,11 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
                 previous: [<previous_code>]
             """)
 
-        self.human_generate_code_prompt = HumanMessagePromptTemplate.from_template("""
+        self.human_generate_code_template = HumanMessagePromptTemplate.from_template("""
         Help me to write python code using below information:
             subtask: {subtask}
             docs: {docs} 
-            previous: {previous_code}
+            previous: {previous_scripts}
             
         With following instructions:
             - Not include 'bmesh' module
@@ -94,52 +95,103 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
                 ```
         """)
 
-        self.human_apply_improvements_prompt = HumanMessagePromptTemplate.from_template("""""")
-        self.human_fix_error_prompt = HumanMessagePromptTemplate.from_template("""""")
+        self.human_apply_improvements_template = HumanMessagePromptTemplate.from_template("""""")
+        self.human_fix_error_template = HumanMessagePromptTemplate.from_template("""""")
 
         self.fix_error_attempts = fix_error_attempts
         self.fix_error_tries = 0
-        self.subtask_offset = 0
+
+        self.caller = None
+        self.num_queries = 0
+        self.query_offset = 0
+        self.coding_task = None
+        self.latest_queries = None
+        self.get_retrieved_docs = None
+        self.retrieved_docs = None
+        self.current_script = None
+        self.previous_scripts = []
+
+        self.copy_state = dict()
 
     @override
     def __call__(
             self,
             state: InputT | dict,
-            runtime: Optional[Runtime] = None,
-            context: Optional[Runtime] = None,
-            config: Optional[Runtime[RunnableConfig]] = None,
+            runtime: RunnableConfig = None,
+            context: RunnableConfig = None,
+            config: RunnableConfig = None,
             **kwargs
-    ) -> Union[dict, Command]:
-        # --------------- model works ---------------
-        # logger.info(f"coding {self.subtask_offset} \n\t {state}", )
-        self.subtask_offset += 1
+    ) -> Union[dict, Command, Send, None]:
+        # ----------------------------------------
+        # This block is always executed only one time
+        # store state from the official call
+        if not state['is_sub_call']:
+            self.copy_state = deepcopy(state)
+            self.copy_state.pop('is_sub_call', None)
+            self.copy_state.pop('has_docs', None)
+            self.copy_state['num_queries'] = len(state['queries'])
+            self.copy_state['query_offset'] = 0
+            self.copy_state['previous_scripts'] = []
+            self.get_retrieved_docs = False
+
         if not state['has_docs']:
-            return Command(
-                goto='retriever',
-                update={
+            return DirectionRouter.go_next(
+                method='send',
+                node='retriever',
+                state={
                     'coding_task': state['coding_task'],
                     'queries': state['queries']
                 },
             )
+        # store retrieved docs of first queries (official call)
+        if not self.get_retrieved_docs:
+            self.copy_state['retrieved_docs'] = state['retrieved_docs']
+            self.get_retrieved_docs = True
+        # later call this agent must pass above
+        # ----------------------------------------
+
+        # operate on each query
         try:
             if state['coding_task'] == 'generate':
-                script = self._generate_script(state, context)
+                script = self._generate_script(state)
             elif state['coding_task'] == "improve":
-                script = self._apply_improvements(state, context)
+                assert 'current_script' in state
+                script = self._apply_improvements(state)
             else:
-                script = self._fix_error(state, context)
-        # -------------------------------------------
+                assert 'current_script' in state
+                script = self._fix_error(state)
+
+            # when the generated script is error-free,
+            # it is also an ending point for recursive calls
+            self.copy_state['previous_scripts'].append(script)
+            self.copy_state['current_script'] = script
+            self.copy_state['query_offset'] += 1
+
         except ScriptWithError as e:
+            self.fix_error_tries += 1
             """Recall Coding Agent if catch command when executing script
             Before fix code, call Retriever Agent to get relevant documents
             `e.command` is a command call retriever with command and command script
             """
             return e.command
 
-        return Command(
-            update={'current_script': script},
-            goto=END
-        )
+        # return original state stored at the beginning
+        # as there may be some sub calls from `retriever` that may change state
+
+        if self.copy_state['query_offset'] < self.copy_state['num_queries']:
+            # Continue with the next query
+            self.fix_error_tries = 0
+            next_node = 'coding'
+        else:
+            # move on to another node if all queries are solved
+            if self.copy_state['caller'] == 'planner':
+                next_node = 'critic'
+            elif self.copy_state['caller'] == 'critic':
+                next_node = END
+            else:
+                return None
+
+        return DirectionRouter.go_next(node=next_node, state=self.copy_state, method='command')
 
     def _prepare_by_adding_human_prompt(self, human_prompt):
         return ChatPromptTemplate([
@@ -147,27 +199,47 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             human_prompt,
         ])
 
-    def _fix_error(self, state, context) -> str:
-        chat_prompt = self._prepare_by_adding_human_prompt(self.human_fix_error_prompt)
+    def _generate_script(self, state):
+        chat_prompt = ChatPromptTemplate([
+            self.system_prompt,
+            self.human_generate_code_template,
+        ])
+        # that's called only when coding_task is 'generate', when queries are subtasks
+        query = state['queries'][self.copy_state['query_offset']]
+        docs = state['retrieved_docs'][self.copy_state['query_offset']]
+        # -----------precess docs -----------
+        #
+        # ----------------------------------
+        formatted_prompt = chat_prompt.invoke({
+            "subtask": query,
+            "docs": docs,
+            "previous_scripts": self.previous_scripts,
+        })
+        # ---------------------------------------------------
+        script = self._generate(formatted_prompt)
+        # ---------------------------------------------------
+
+        return script
+
+    def _fix_error(self, state) -> str:
+        chat_prompt = self._prepare_by_adding_human_prompt(self.human_fix_error_template)
 
         formatted_prompt = chat_prompt.invoke({
             'script': state['current_script'],
-            'command': state['queries'],
+            'error': state['queries'],
             'docs': state['retrieved_docs']
         })
 
         # ---------------------------------------------------
-        fixed_script = self._write_code(formatted_prompt, context)
+        fixed_script = self._generate(formatted_prompt)
         # ---------------------------------------------------
 
         return fixed_script
 
-    def _apply_improvements(self, state, context):
-        raise NotCompletedError
-
+    def _apply_improvements(self, state):
         chat_prompt = ChatPromptTemplate([
             self.system_prompt,
-            self.human_apply_improvements_prompt,
+            self.human_apply_improvements_template,
         ])
 
         formatted_prompt = chat_prompt.invoke({
@@ -176,38 +248,18 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             'docs': state['retrieved_docs'],
         })
         # ---------------------------------------------------
-        improved_script = self._write_code(formatted_prompt, context)
+        improved_script = self._generate(formatted_prompt)
         # ---------------------------------------------------
         return improved_script
 
-    def _generate_script(self, state, context):
-        chat_prompt = ChatPromptTemplate([
-            self.system_prompt,
-            self.human_generate_code_prompt,
-        ])
-        subscripts = []
-        for i, query in enumerate(state['queries']):
-            docs = state['retrieved_docs'][i]
-
-            # -----------precess docs -----------
-            # here
-            # -----------------------------------
-
-            formatted_prompt = chat_prompt.invoke({
-                "subtask": query,
-                "docs": docs,
-                "previous_code": subscripts,
-            })
-            # ---------------------------------------------------
-            message = self._write_code(formatted_prompt, context)
-            # ---------------------------------------------------
-            subscripts.append(message)
-        return subscripts[-1]
-
-    def _write_code(self, formatted_prompt, context):
+    def _generate(self, formatted_prompt):
         while True:
-            generated_script = self._stimulate_model_invoke()
+            # ----------------------------------
+            generated_script = self.anchor_call(formatted_prompt)
+            # ----------------------------------
+
             anchor_file = os.path.join(self.anchor_folder, f"fake_script.py")
+            """Anchor file to check error"""
             write_script.invoke({
                 "script": generated_script,
                 "file_path": anchor_file
@@ -215,27 +267,34 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             result = execute_script.invoke(input={"script": anchor_file})
             error = result['error']
 
-            if len(error) == 0 or self.fix_error_tries == self.fix_error_attempts:
+            if len(error) == 0:
+                return generated_script
+            if self.fix_error_tries == self.fix_error_attempts:
                 # Test script would be fixed successfully
                 generated_script = 'import sys'
                 return generated_script
             else:
-                self.fix_error_tries += 1
-                raise ScriptWithError(command=Command(
-                    goto='retriever',
-                    update={
+                raise ScriptWithError(command=DirectionRouter.go_next(
+                    method='command',
+                    node='retriever',
+                    state={
+                        'current_script': generated_script,
                         'coding_task': 'fix',
                         'queries': [error, ],
-                        'current_script': generated_script
-                    },
-                ))
+                    })
+                )
 
-    def _stimulate_model_invoke(self):
-        return "import os pri"
+    @override
+    def anchor_call(self, *args):
+        with open("assets/blender_script/anchor_0.py", 'r') as f:
+            return f.read()
 
-    def _chat_model_invoke(self, formatted_prompt, context):
+    @override
+    def chat_model_call(self, formatted_prompt, context):
         response = self.chat_model.invoke(formatted_prompt)
         try:
             generated_script = response.tool_calls[-1]['args']['script']
         except KeyError as e:
             exit()
+
+        return generated_script
