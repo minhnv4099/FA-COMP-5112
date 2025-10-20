@@ -47,12 +47,21 @@ class CodingOutput(BaseOutput):
                                     "NOTE: only use 'script' as a key, no any additional prefix or/and suffix character")
 
 
+class CriticFixPair(BaseOutput):
+    """The output schema for a single pair of critic and fix"""
+
+    critic: str = Field(description="A critic that exists in an image")
+
+    fix: str = Field(description="A fix (action, adjustment) that used by coding agent to "
+                                 "modify the script and fix the critic")
+
+
 @register(type='structured_output', name='critic')
 class CriticOutput(BaseOutput):
     """Output schema for the critic agent"""
 
-    critic_fixes: Sequence[Mapping[str, str]] = Field(
-        description="Identify critics of rendered images and solutions to fix that")
+    critic_fix_list: Sequence[CriticFixPair] = Field(
+        description="List of (critic, fix) pairs in the given image")
 
 
 @register(type='structured_output', name='verification')

@@ -133,10 +133,13 @@ class CriticState(BaseState):
 class VerificationState(BaseState):
     """The input state for Verification Agent"""
 
+    current_script: Annotated[str, ...]
+    """The script after fixing critic by the coding agent"""
+
     rendered_images: Annotated[Sequence[str], ...]
     """Sequence of rendered image paths after criticising"""
 
-    critic_and_fixes: Annotated[list[list[str]], ...]
+    critics_fixes: Annotated[dict[int, list[dict]], ...]
     """Sequence of critics and fixes provided by the `critic agent`"""
 
 
@@ -144,16 +147,14 @@ class VerificationState(BaseState):
 class UserPromptUpState(BaseState):
     """The input state for User Agent"""
 
-    follow_up_prompts: Annotated[Sequence[str], ...]
+    additional_user_prompts: Annotated[Sequence[str], ...]
     """Additional prompts provided by user"""
 
-    current_code: Annotated[str, "The mose recent code"]
+    current_script: Annotated[str, "The mose recent code"]
     """The mose recent generated script after the first two phases in the process"""
 
-    terminated: Annotated[bool, ...]
-    """Whether user terminates the process"""
 
-
+# --------------------------------------------------------------------------
 # Phase/Subgraph input states
 class IcpInputState(PlannerState, RetrieverState, CodingState):
     """The input schema for the Initial Creation Phase"""
@@ -200,7 +201,17 @@ class UrpOverallState(ArpInputState, ArpOutputState):
     """The state schema of the User-guided Refinement Phase"""
 
 
+# --------------------------------------------------------------------------
+
+
 # Share state
 @register(name='shared', type='state')
-class SharedState(PlannerState, RetrieverState, CodingState, CriticState):
+class SharedState(
+    PlannerState,
+    RetrieverState,
+    CodingState,
+    CriticState,
+    VerificationState,
+    UserPromptUpState,
+):
     """The shared state contains all state channels"""
