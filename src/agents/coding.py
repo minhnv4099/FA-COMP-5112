@@ -14,7 +14,6 @@ from langchain_core.prompts import (
     HumanMessagePromptTemplate
 )
 from langgraph.config import RunnableConfig
-from langgraph.graph.state import END
 from langgraph.types import Command, Send
 from typing_extensions import override, Any
 
@@ -48,7 +47,7 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             anchor_folder: str = None,
             system_prompt: str = None,
             human_prompt: str = None,
-            fix_error_attempts: int = 5,
+            fix_error_attempts: int = None,
             **kwargs
     ):
         super().__init__(
@@ -122,6 +121,7 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             config: RunnableConfig = None,
             **kwargs
     ) -> Union[dict, Command, Send, None]:
+        logger.info(state['caller'])
         # ----------------------------------------
         # This block is always executed only one time
         # store state from the official call
@@ -187,10 +187,14 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             if self.copy_state['caller'] == 'planner':
                 next_node = 'critic'
             elif self.copy_state['caller'] == 'critic':
-                next_node = END
+                next_node = 'verification'
+            elif self.copy_state['caller'] == 'verification':
+                next_node = 'verification'
+            # elif self.copy_state['caller'] == 'user':
+            #     next_node = 'user',
             else:
                 return None
-
+        logger.info(f'coding -> {next_node}')
         return DirectionRouter.go_next(node=next_node, state=self.copy_state, method='command')
 
     def _prepare_by_adding_human_prompt(self, human_prompt):
@@ -286,7 +290,7 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
 
     @override
     def anchor_call(self, *args):
-        with open("assets/blender_script/anchor_0.py", 'r') as f:
+        with open("assets/blender_script/anchor_4.py", 'r') as f:
             return f.read()
 
     @override

@@ -85,26 +85,28 @@ class CriticAgent(AgentAsNode, name='Critic'):
         script = state['current_script']
         processed_script = self._process_script(script)
 
-        rendered_image_paths = self._run_to_get_rendered_images(processed_script)
+        rendered_image_paths = self._run_to_get_rendered_images(processed_script)[0:1]
         predefined_prompt = self.validating_prompt
 
-        critic_fixes = []
-        for p in rendered_image_paths:
-            critic_fixes.extend(self.anchor_call(
-                image_path=p,
-                prompt=predefined_prompt)
-            )
-
-        # ----------process critic fixes-----------
+        critics_fixes = dict()
+        fixes = []
+        for i, p in enumerate(rendered_image_paths):
+            formatted_prompt = self._prepare_chat_prompt(image=p)
+            response = self.anchor_call(formatted_prompt)
+            critics_fixes[i] = response
+            fixes.extend([d['fix'] for d in response])
+        # ----------process critic-fixe list-----------
         #
-        # -----------------------------------------
+        # ---------------------------------------------
 
         update_state = {
-            'queries': [d['fixes'] for d in critic_fixes],
+            'queries': fixes,
             'coding_task': 'improve',
             'is_sub_call': False,
             'caller': 'critic',
-            'has_docs': False
+            'has_docs': False,
+            'critics_fixes': critics_fixes,
+            'rendered_images': rendered_image_paths,
         }
 
         return DirectionRouter.go_next(
@@ -136,18 +138,22 @@ class CriticAgent(AgentAsNode, name='Critic'):
         return _script
 
     @override
-    def anchor_call(self, image_path: str, prompt: str):
+    def _prepare_chat_prompt(self, image: str, *args, **kwargs):
+        return image
+
+    @override
+    def anchor_call(self, formatted_prompt: str, *args, **kwargs):
         return [
             {
                 'critic': 'The armrests aren\'t attached to the seat',
-                'fixes': 'Move armrests down by y-axis'
+                'fix': 'Move armrests down by y-axis'
             },
             {
                 'critic': 'The legs are too long',
-                'fixes': 'Decrease length of legs'
+                'fix': 'Decrease length of legs'
             }
         ]
 
     @override
-    def chat_model_call(self, image_paths: list[str], prompt: str, *args, **kwargs):
+    def chat_model_call(self, formatted_prompt: str, *args, **kwargs):
         raise NotImplementedError
