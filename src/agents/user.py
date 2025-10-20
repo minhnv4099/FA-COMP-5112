@@ -6,14 +6,14 @@ from langgraph.config import RunnableConfig
 from langgraph.graph.state import END
 from typing_extensions import override
 
-from src.base.agent import AgentAsNode
-from src.base.mapping import register
-from src.base.typing import InputT
-from src.base.utils import DirectionRouter
+from ..base.agent import AgentAsNode
+from ..base.mapping import register
+from ..base.utils import DirectionRouter
+from ..utils.typing import InputT
 
 
 @register(name='user', type='agent')
-class UserAgent(AgentAsNode, name="User"):
+class UserAgent(AgentAsNode, name="User", use_model=False):
     """
     The User Agent class
     """
@@ -36,4 +36,4 @@ class UserAgent(AgentAsNode, name="User"):
             state['additional_user_prompts'] = user_query
             next_node = 'coding'
 
-        return DirectionRouter.go_next(state=state, node=next_node, method='command')
+        return DirectionRouter.goto(state=state, node=next_node, method='command')

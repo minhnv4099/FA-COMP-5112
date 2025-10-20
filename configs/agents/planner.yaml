@@ -18,6 +18,8 @@ edges:
   out_going: [ ]
 #    - coding
 
+system_prompt: ''
+human_template: ''
 
 use_model: True
 

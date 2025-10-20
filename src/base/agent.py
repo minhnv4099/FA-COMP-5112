@@ -9,8 +9,9 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 from langgraph.config import RunnableConfig
 
 from .mapping import register
-from .typing import StateT, InputT, OutputT, ContextT
+from ..utils.files import load_prompt_template
 from ..utils.schema import fetch_schema
+from ..utils.typing import StateT, InputT, OutputT, ContextT
 
 
 class BaseAgent:
@@ -82,10 +83,11 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             model_api_key: str = None,
             output_schema_as_tool: bool = None,
             chat_model: BaseChatModel = None,
+            system_prompt: str = None,
+            human_template: str = None,
             **kwargs,
     ):
         self.metadata = metadata
-
         self.chat_model = chat_model
         self.model_name = model_name
         self.model_provider = model_provider
@@ -93,7 +95,6 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
 
         self.edges = edges
         self.input_schema = fetch_schema(input_schema)
-        """Only input schema"""
         self.tool_schemas = tool_schemas
         self.output_schema = output_schema
         self.output_schema_as_tool = output_schema_as_tool
@@ -102,6 +103,9 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             self.validate_schema()
             self.validate_model()
 
+        self.system_prompt = load_prompt_template(system_prompt)
+        self.human_template = load_prompt_template(human_template)
+
     def validate_model(self):
         # Useful when using an identical chat model
         if not self.chat_model:
@@ -109,8 +113,11 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             self.chat_model = init_chat_model(
                 model=self.model_name,
                 model_provider=self.model_provider,
-                rate_limiter=InMemoryRateLimiter(requests_per_second=0.1, check_every_n_seconds=0.1, max_bucket_size=10)
-
+                rate_limiter=InMemoryRateLimiter(
+                    requests_per_second=0.1,
+                    check_every_n_seconds=0.1,
+                    max_bucket_size=10
+                )
             )
 
         self.chat_model = self.chat_model.bind_tools(self.tool_schemas)
@@ -134,14 +141,18 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             for tool_schema in self.tool_schemas
         ]
 
-    def anchor_call(self):
+    def _prepare_chat_prompt(self, *args, **kwargs):
+        """Prepare ready prompt that would be passed to chat model"""
+        raise NotImplementedError
+
+    def anchor_call(self, *args, **kwargs):
         """Use this function to generate virtual data that match output schema in reality.
         The main purpose is just test workflow but not call chat model really
         """
         raise NotImplementedError
 
     def chat_model_call(self, *args, **kwargs):
-        """This method actually calls chat model"""
+        """This method actually calls chat model and response follow ``output_schema``"""
         raise NotImplementedError
 
     def __call__(
@@ -160,17 +171,13 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
                 State only takes the necessary keys declared in InputT from "state_schema" of the graph.
                 Default to None
             config (RunnableConfig, optional):
-                Config passed during operation.
-                Default to None
+                Config passed during operation. Default to None
             context (ContextT, optional):
-                Context variables from the program.
-                Default to None
+                Context variables from the program. Default to None
             runtime (Runtime, optional):
-                Values from runtime.
-                Default to None
-
+                Values from runtime. Default to None
         Returns:
-            Update state
+            dict: Update state
         """
         # -------------------------------
         raise NotImplementedError

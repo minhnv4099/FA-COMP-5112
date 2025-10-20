@@ -8,11 +8,10 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables.config import RunnableConfig
 from typing_extensions import override
 
-from src import OutputT
-from src.agents.critic import CriticAgent
-from src.base.agent import AgentAsNode, register
-from src.base.typing import InputT
-from src.base.utils import DirectionRouter
+from .critic import CriticAgent
+from ..base.agent import AgentAsNode, register
+from ..base.utils import DirectionRouter
+from ..utils.typing import InputT, OutputT
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +36,9 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
             chat_model: BaseChatModel = None,
             save_rendered_dir: str = None,
             anchor_script_path: str = None,
-            validating_prompt: str = None,
             verification_attempts: int = None,
+            system_prompt: str = None,
+            human_template: str = None,
             **kwargs
     ):
         super().__init__(
@@ -54,7 +54,8 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
             chat_model,
             save_rendered_dir,
             anchor_script_path,
-            validating_prompt,
+            system_prompt,
+            human_template,
             **kwargs
         )
 
@@ -83,6 +84,7 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
         # fi: fixed rendered image
 
         for i, (ri, fi) in enumerate(zip(rendered_images, fixed_rendered_images)):
+            # -----------------------------------------------
             formatted_prompt = self._prepare_chat_prompt(
                 image=ri, fixed_image=fi,
                 critics_fixes=critics_fixes[i],
@@ -91,6 +93,7 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
                 formatted_prompt,
                 critics_fixes=critics_fixes[i]
             )
+            # -----------------------------------------------
 
             critic_satisfied_solution.extend(response)
 
@@ -104,13 +107,6 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
             self.verification_tries += 1
             next_node = 'coding'
         else:
-            # while True:
-            #     prompts = interrupt(value="Enter additional prompt: ")
-            #
-            #     print(f"New prompts from human: {prompts}")
-            #
-            #     if prompts.lower() in ('q', 'quit'):
-            #         break
             next_node = 'user'
             self.verification_tries = 0
         # ----------process critic-fixe list-----------
@@ -125,11 +121,7 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
             'has_docs': False
         }
 
-        return DirectionRouter.go_next(
-            method='command',
-            state=update_state,
-            node=next_node
-        )
+        return DirectionRouter.goto(state=update_state, node=next_node, method='command')
 
     @override
     def _prepare_chat_prompt(

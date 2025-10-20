@@ -21,7 +21,6 @@ edges:
   out_going: [ ]
 #    - coding
 
-
 use_model: False
 
 #model_name: gpt-4o-mini

@@ -18,15 +18,6 @@ __all__ = [
     "CriticState",
     "VerificationState",
     "UserPromptUpState",
-    "IcpOverallState",
-    "IcpInputState",
-    "IcpOutputState",
-    "ArpOverallState",
-    "ArpInputState",
-    "ArpOutputState",
-    "UrpOverallState",
-    "UrpInputState",
-    "UrpOutputState"
 ]
 
 
@@ -152,56 +143,6 @@ class UserPromptUpState(BaseState):
 
     current_script: Annotated[str, "The mose recent code"]
     """The mose recent generated script after the first two phases in the process"""
-
-
-# --------------------------------------------------------------------------
-# Phase/Subgraph input states
-class IcpInputState(PlannerState, RetrieverState, CodingState):
-    """The input schema for the Initial Creation Phase"""
-
-
-class IcpOutputState(BaseState):
-    """The output schema of the Initial Creation Phase"""
-
-    error_free_code: Annotated[str, ...]
-    """The generated code without yielding any error"""
-
-
-class IcpOverallState(IcpInputState, IcpOutputState):
-    """The state schema of the Initial Creation Phase"""
-
-
-class ArpInputState(IcpOutputState):
-    """The input schema of the Auto Refinement Phase"""
-
-
-class ArpOutputState(BaseState):
-    """The output schema of the Auto Refinement Phase"""
-
-    refined_code: Annotated[str, ...]
-    """The script after being refined by critic and verification agents"""
-
-
-class ArpOverallState(ArpInputState, ArpOutputState):
-    """The state schema of the Auto Refinement Phase"""
-
-
-class UrpInputState(ArpOutputState):
-    """The input schema of the User-guided Refinement Phase"""
-
-
-class UrpOutputState(BaseState):
-    """The output schema of the User-guided Refinement Phase"""
-
-    user_guided_code: Annotated[str, ...]
-    """The script after the last phase"""
-
-
-class UrpOverallState(ArpInputState, ArpOutputState):
-    """The state schema of the User-guided Refinement Phase"""
-
-
-# --------------------------------------------------------------------------
 
 
 # Share state

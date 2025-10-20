@@ -10,15 +10,14 @@ from langchain_core.language_models import BaseChatModel
 from langgraph.config import RunnableConfig
 from typing_extensions import override
 
-from src import OutputT
-from src.base.agent import AgentAsNode, register
-from src.base.typing import InputT
-from src.base.utils import DirectionRouter, Command, Send
-from src.utils.script import (
+from ..base.agent import AgentAsNode, register
+from ..base.utils import DirectionRouter, Command, Send
+from ..utils.script import (
     write_script,
     execute,
     CAMERA_SETTING_FILE
 )
+from ..utils.typing import InputT, OutputT
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +43,8 @@ class CriticAgent(AgentAsNode, name='Critic'):
             save_rendered_dir: str = None,
             anchor_script_path: str = None,
             validating_prompt: str = None,
+            system_prompt: str = None,
+            human_template: str = None,
             **kwargs
     ):
         super().__init__(
@@ -57,6 +58,8 @@ class CriticAgent(AgentAsNode, name='Critic'):
             model_api_key,
             output_schema_as_tool,
             chat_model,
+            system_prompt,
+            human_template,
             **kwargs
         )
 
@@ -91,10 +94,13 @@ class CriticAgent(AgentAsNode, name='Critic'):
         critics_fixes = dict()
         fixes = []
         for i, p in enumerate(rendered_image_paths):
+            # -----------------------------------------------
             formatted_prompt = self._prepare_chat_prompt(image=p)
-            response = self.anchor_call(formatted_prompt)
+            response = self.anchor_call(formatted_prompt, predefined_prompt)
+            # -----------------------------------------------
             critics_fixes[i] = response
             fixes.extend([d['fix'] for d in response])
+
         # ----------process critic-fixe list-----------
         #
         # ---------------------------------------------
@@ -109,11 +115,7 @@ class CriticAgent(AgentAsNode, name='Critic'):
             'rendered_images': rendered_image_paths,
         }
 
-        return DirectionRouter.go_next(
-            method='command',
-            state=update_state,
-            node='coding'
-        )
+        return DirectionRouter.goto(state=update_state, node='coding', method='command')
 
     def check_critic_fixes(self, critic_fixes: list[dict]):
         ...
@@ -142,7 +144,13 @@ class CriticAgent(AgentAsNode, name='Critic'):
         return image
 
     @override
-    def anchor_call(self, formatted_prompt: str, *args, **kwargs):
+    def anchor_call(
+            self,
+            formatted_prompt: str,
+            validating_prompt: str,
+            *args,
+            **kwargs
+    ):
         return [
             {
                 'critic': 'The armrests aren\'t attached to the seat',

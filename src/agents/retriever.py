@@ -12,9 +12,9 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command, Send
 from typing_extensions import override
 
-from src.base.agent import AgentAsNode, register
-from src.base.typing import InputT
-from src.base.utils import DirectionRouter
+from ..base.agent import AgentAsNode, register
+from ..base.utils import DirectionRouter
+from ..utils.typing import InputT
 
 logging.getLogger(__name__)
 
@@ -96,11 +96,7 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
                  "content": f"Retriever Agent result documents when '{state['coding_task']}'"}
         }
         # return update_state
-        return DirectionRouter.go_next(
-            method='command',
-            state=update_state,
-            node='coding'
-        )
+        return DirectionRouter.goto(state=update_state, node='coding', method='command')
 
     @override
     def chat_model_call(self, query, *args, **kwargs):
