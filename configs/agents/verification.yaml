@@ -5,6 +5,12 @@ metadata:
   description: This node acts as a verification agent, verifies whether
     fixes provided by critic agent are successfully solved and suggest solutions if not
 
+save_rendered_dir: assets/rendered_images/verification
+anchor_script_path: assets/blender_script/anchor_verification.py
+refined_script_path: assets/blender_script/refined_version.py
+
+verification_attempts: 1
+
 input_schema:
   type: state
   name: verification
@@ -14,10 +20,8 @@ output_schema:
 tool_schemas: [ ]
 
 edges:
-  in_coming:
-    - coding
+  in_coming: [ ]
   out_going:
-    - coding
     - end
 
 use_model: True

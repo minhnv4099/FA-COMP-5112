@@ -6,6 +6,7 @@ defaults:
   - agents/coding
   - agents/critic
   - agents/verification
+  - agents/user
   - hydra
   - graph
   - _self_

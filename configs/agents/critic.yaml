@@ -4,8 +4,8 @@ name: Critic
 metadata:
   description: This node acts as a critic agent, analyzes, points out flaws in given images and gives fixes
 
-save_rendered_dir: assets/rendered_images
-anchor_script_path: assets/blender_script/anchor.py
+save_rendered_dir: assets/rendered_images/critic/
+anchor_script_path: assets/blender_script/critic_anchor.py
 validating_prompt: nothing
 
 input_schema:
