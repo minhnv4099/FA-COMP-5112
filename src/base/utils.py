@@ -8,9 +8,10 @@ from langgraph.types import Command, Send
 
 
 class DirectionRouter:
+    """This class acts as a direction router base on 'Command' or 'Send' mechanism"""
 
     @classmethod
-    def go_next(
+    def goto(
             cls,
             state: dict,
             node: str,

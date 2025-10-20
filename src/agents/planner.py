@@ -9,9 +9,9 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 from typing_extensions import override
 
-from src.base.agent import AgentAsNode, register, InputT
-from src.base.state import PlannerState
-from src.base.utils import DirectionRouter
+from ..base.agent import AgentAsNode, register, InputT
+from ..base.state import PlannerState
+from ..base.utils import DirectionRouter
 
 
 @register(type="agent", name='planner')
@@ -33,6 +33,8 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
             model_api_key: str = None,
             output_schema_as_tool: bool = None,
             chat_model: BaseChatModel = None,
+            system_prompt: str = None,
+            human_template: str = None,
             **kwargs
     ):
         super().__init__(
@@ -46,19 +48,10 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
             model_api_key,
             output_schema_as_tool,
             chat_model,
+            system_prompt,
+            human_template,
             **kwargs
         )
-
-    @override
-    def anchor_call(self):
-        return ['a', 'b']
-
-    @override
-    def chat_model_call(self, task: str, *args, **kwargs):
-        response = self.chat_model.invoke(task)
-        tool_args = response.tool_calls[-1]['args']
-
-        return tool_args
 
     @override
     def __call__(
@@ -70,7 +63,8 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
             **kwargs
     ) -> Command[Literal['retriever']]:
         # -------------------------------------------------
-        response = self.anchor_call()
+        formatted_prompt = self._prepare_chat_prompt()
+        response = self.anchor_call(formatted_prompt)
         # -------------------------------------------------
         update_state = dict()
         update_state['queries'] = response
@@ -80,8 +74,19 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
         update_state["messages"] = {'role': "assistant", "content": "Planner Agent returned results"}
         update_state['caller'] = 'planner'
 
-        return DirectionRouter.go_next(
-            method='command',
-            state=update_state,
-            node='coding'
-        )
+        return DirectionRouter.goto(state=update_state, node='coding', method='command')
+
+    @override
+    def anchor_call(self, formatted_prompt, *args, **kwargs):
+        return ['a', 'b']
+
+    @override
+    def chat_model_call(self, task: str, *args, **kwargs):
+        response = self.chat_model.invoke(task)
+        tool_args = response.tool_calls[-1]['args']
+
+        return tool_args
+
+    @override
+    def _prepare_chat_prompt(self, *args, **kwargs):
+        return ''

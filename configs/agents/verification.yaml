@@ -24,6 +24,9 @@ edges:
   out_going:
     - end
 
+system_prompt: ''
+human_template: ''
+
 use_model: True
 
 model_name: gpt-4o-mini
