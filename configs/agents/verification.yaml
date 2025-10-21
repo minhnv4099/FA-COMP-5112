@@ -24,8 +24,7 @@ edges:
   out_going:
     - end
 
-system_prompt: ''
-human_template: ''
+template_file: templates/prompt/verification.yaml
 
 use_model: True
 

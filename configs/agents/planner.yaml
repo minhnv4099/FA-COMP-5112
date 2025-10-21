@@ -16,10 +16,8 @@ edges:
   in_coming:
     - start
   out_going: [ ]
-#    - coding
 
-system_prompt: ''
-human_template: ''
+template_file: templates/prompt/planner.yaml
 
 use_model: True
 

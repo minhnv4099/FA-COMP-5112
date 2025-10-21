@@ -18,19 +18,10 @@ tool_schemas: [ ]
 
 edges:
   in_coming: [ ]
-  #    - planner
-  #    - retriever
-  #    - critic
-  #    - verification
   out_going: [ ]
-#    - retriever
-#    - critic
-#    - verification
 
-system_prompt: ''
-human_generate_template: ''
-human_fix_template: ''
-human_improve_template: ''
+
+template_file: templates/prompt/coding.yaml
 
 use_model: True
 

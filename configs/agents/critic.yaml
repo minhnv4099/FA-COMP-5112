@@ -18,13 +18,9 @@ tool_schemas: [ ]
 
 edges:
   in_coming: [ ]
-  #  - coding
-  out_going:
-    #    - coding
-    - end
+  out_going: [ ]
 
-system_prompt: ''
-human_template: ''
+template_file: templates/prompt/critic.yaml
 
 use_model: True
 
