@@ -11,7 +11,7 @@ from typing_extensions import override
 from .critic import CriticAgent
 from ..base.agent import AgentAsNode, register
 from ..base.utils import DirectionRouter
-from ..utils.typing import InputT, OutputT
+from ..utils import InputT, OutputT
 
 logger = logging.getLogger(__name__)
 
@@ -37,25 +37,26 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
             save_rendered_dir: str = None,
             anchor_script_path: str = None,
             verification_attempts: int = None,
-            system_prompt: str = None,
-            human_template: str = None,
+            camera_setting_file: str = None,
+            # templates
+            template_file: str = None,
             **kwargs
     ):
         super().__init__(
-            metadata,
-            input_schema,
-            edges,
-            tool_schemas,
-            output_schema,
-            model_name,
-            model_provider,
-            model_api_key,
-            output_schema_as_tool,
-            chat_model,
-            save_rendered_dir,
-            anchor_script_path,
-            system_prompt,
-            human_template,
+            metadata=metadata,
+            input_schema=input_schema,
+            edges=edges,
+            tool_schemas=tool_schemas,
+            output_schema=output_schema,
+            model_name=model_name,
+            model_provider=model_provider,
+            model_api_key=model_api_key,
+            output_schema_as_tool=output_schema_as_tool,
+            chat_model=chat_model,
+            template_file=template_file,
+            save_rendered_dir=save_rendered_dir,
+            anchor_script_path=anchor_script_path,
+            camera_setting_file=camera_setting_file,
             **kwargs
         )
 
@@ -74,7 +75,7 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
         current_script = state['current_script']
         processed_script = self._process_script(current_script)
 
-        fixed_rendered_images = self._run_to_get_rendered_images(processed_script)[0:1]
+        fixed_rendered_images = self._run_to_get_rendered_images(processed_script)[0:2]
         rendered_images = state['rendered_images']
 
         critics_fixes = state['critics_fixes']
@@ -85,10 +86,11 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
 
         for i, (ri, fi) in enumerate(zip(rendered_images, fixed_rendered_images)):
             # -----------------------------------------------
-            formatted_prompt = self._prepare_chat_prompt(
-                image=ri, fixed_image=fi,
-                critics_fixes=critics_fixes[i],
-            )
+            formatted_prompt = self.chat_template.invoke({
+                'image': ri,
+                "fixed_image": fi,
+                "critics_fixes": critics_fixes[i],
+            })
             response = self.anchor_call(
                 formatted_prompt,
                 critics_fixes=critics_fixes[i]
@@ -122,17 +124,6 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
         }
 
         return DirectionRouter.goto(state=update_state, node=next_node, method='command')
-
-    @override
-    def _prepare_chat_prompt(
-            self,
-            image: str,
-            fixed_image: str,
-            critics_fixes: list,
-            *args,
-            **kwargs
-    ):
-        return image
 
     @override
     def anchor_call(self, formatted_prompt: str, critics_fixes: list, *args, **kwargs):

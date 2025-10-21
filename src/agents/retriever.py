@@ -14,7 +14,7 @@ from typing_extensions import override
 
 from ..base.agent import AgentAsNode, register
 from ..base.utils import DirectionRouter
-from ..utils.typing import InputT
+from ..utils import InputT
 
 logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
             edges=edges,
             tool_schemas=tool_schemas,
             output_schema=output_schema,
+            **kwargs,
         )
 
         gpt4all_kwargs = {'allow_download': 'True'}
@@ -100,4 +101,4 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
 
     @override
     def chat_model_call(self, query, *args, **kwargs):
-        docs = self.retrieving_engine.invoke(query)
+        raise NotImplementedError

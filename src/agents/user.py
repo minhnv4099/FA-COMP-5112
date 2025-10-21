@@ -9,7 +9,7 @@ from typing_extensions import override
 from ..base.agent import AgentAsNode
 from ..base.mapping import register
 from ..base.utils import DirectionRouter
-from ..utils.typing import InputT
+from ..utils import InputT
 
 
 @register(name='user', type='agent')

@@ -2,6 +2,7 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+import glob
 import logging
 import os
 from pathlib import Path
@@ -12,12 +13,9 @@ from typing_extensions import override
 
 from ..base.agent import AgentAsNode, register
 from ..base.utils import DirectionRouter, Command, Send
-from ..utils.script import (
-    write_script,
-    execute,
-    CAMERA_SETTING_FILE
-)
-from ..utils.typing import InputT, OutputT
+from ..utils import DEFAULT_CAMERA_SETTING_FILE, ANCHOR_FILE, SAVE_CRITIC_DIR
+from ..utils import InputT, OutputT
+from ..utils import write_script, execute
 
 logger = logging.getLogger(__name__)
 
@@ -43,38 +41,35 @@ class CriticAgent(AgentAsNode, name='Critic'):
             save_rendered_dir: str = None,
             anchor_script_path: str = None,
             validating_prompt: str = None,
-            system_prompt: str = None,
-            human_template: str = None,
+            template_file: str = None,
+            camera_setting_file: str = None,
             **kwargs
     ):
         super().__init__(
-            metadata,
-            input_schema,
-            edges,
-            tool_schemas,
-            output_schema,
-            model_name,
-            model_provider,
-            model_api_key,
-            output_schema_as_tool,
-            chat_model,
-            system_prompt,
-            human_template,
+            metadata=metadata,
+            input_schema=input_schema,
+            edges=edges,
+            tool_schemas=tool_schemas,
+            output_schema=output_schema,
+            model_name=model_name,
+            model_provider=model_provider,
+            model_api_key=model_api_key,
+            output_schema_as_tool=output_schema_as_tool,
+            chat_model=chat_model,
+            template_file=template_file,
             **kwargs
         )
 
-        self.camera_setting_file = kwargs.get("camera_setting_file", CAMERA_SETTING_FILE)
-        self.combined_script_template = """{creation_script}
-        
-{additional_script} 
-"""
-        self.save_rendered_dir = save_rendered_dir
-        os.makedirs(save_rendered_dir, exist_ok=True)
-
-        self.anchor_script_path = anchor_script_path
-        os.makedirs(Path(anchor_script_path).parent, exist_ok=True)
-
+        super()._prepare_chat_template()
         self.validating_prompt = validating_prompt
+        self.combined_script_template = "{creation_script}\n\n{additional_script}"
+
+        self.camera_setting_file = camera_setting_file if camera_setting_file else DEFAULT_CAMERA_SETTING_FILE
+        self.anchor_script_path = anchor_script_path if anchor_script_path else ANCHOR_FILE
+        self.save_rendered_dir = save_rendered_dir if save_rendered_dir else SAVE_CRITIC_DIR
+
+        os.makedirs(save_rendered_dir, exist_ok=True)
+        os.makedirs(Path(anchor_script_path).parent, exist_ok=True)
 
     @override
     def __call__(
@@ -86,17 +81,19 @@ class CriticAgent(AgentAsNode, name='Critic'):
             **kwargs
     ) -> Command | Send | dict:
         script = state['current_script']
-        processed_script = self._process_script(script)
+        ready_render_script = self._process_script(script)
 
-        rendered_image_paths = self._run_to_get_rendered_images(processed_script)[0:1]
-        predefined_prompt = self.validating_prompt
+        rendered_image_paths = self._run_to_get_rendered_images(ready_render_script)[0:2]
 
         critics_fixes = dict()
         fixes = []
-        for i, p in enumerate(rendered_image_paths):
+        for i, image in enumerate(rendered_image_paths):
             # -----------------------------------------------
-            formatted_prompt = self._prepare_chat_prompt(image=p)
-            response = self.anchor_call(formatted_prompt, predefined_prompt)
+            formatted_prompt = self.chat_template.invoke({
+                'image': image,
+                'validating_prompt': self.validating_prompt,
+            })
+            response = self.anchor_call(formatted_prompt)
             # -----------------------------------------------
             critics_fixes[i] = response
             fixes.extend([d['fix'] for d in response])
@@ -118,13 +115,15 @@ class CriticAgent(AgentAsNode, name='Critic'):
         return DirectionRouter.goto(state=update_state, node='coding', method='command')
 
     def check_critic_fixes(self, critic_fixes: list[dict]):
-        ...
+        raise NotImplementedError
 
     def _run_to_get_rendered_images(self, script: str):
         write_script(script, self.anchor_script_path)
-        result = execute(script_path=self.anchor_script_path)
+        execute(script_path=self.anchor_script_path)
 
-        rendered_image_paths = os.listdir(self.save_rendered_dir)
+        rendered_image_paths = glob.glob(fr"{self.save_rendered_dir}/*.png")
+        rendered_image_paths.sort()
+
         return rendered_image_paths
 
     def _process_script(self, script):
@@ -132,25 +131,15 @@ class CriticAgent(AgentAsNode, name='Critic'):
             camera_script = f.read()
         camera_script = camera_script.replace("{save_dir}", self.save_rendered_dir)
 
-        _script = self.combined_script_template.format(
+        combined_script = self.combined_script_template.format(
             creation_script=script,
             additional_script=camera_script,
         )
 
-        return _script
+        return combined_script
 
     @override
-    def _prepare_chat_prompt(self, image: str, *args, **kwargs):
-        return image
-
-    @override
-    def anchor_call(
-            self,
-            formatted_prompt: str,
-            validating_prompt: str,
-            *args,
-            **kwargs
-    ):
+    def anchor_call(self, formatted_prompt: str, *args, **kwargs):
         return [
             {
                 'critic': 'The armrests aren\'t attached to the seat',

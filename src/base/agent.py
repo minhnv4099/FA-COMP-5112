@@ -5,11 +5,12 @@
 from typing import Union, Generic, Any
 
 from langchain.chat_models.base import BaseChatModel, init_chat_model
+from langchain.prompts import SystemMessagePromptTemplate, HumanMessagePromptTemplate, ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langgraph.config import RunnableConfig
 
 from .mapping import register
-from ..utils.files import load_prompt_template
+from ..utils.files import load_prompt_template_file
 from ..utils.schema import fetch_schema
 from ..utils.typing import StateT, InputT, OutputT, ContextT
 
@@ -83,8 +84,7 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             model_api_key: str = None,
             output_schema_as_tool: bool = None,
             chat_model: BaseChatModel = None,
-            system_prompt: str = None,
-            human_template: str = None,
+            template_file: str = None,
             **kwargs,
     ):
         self.metadata = metadata
@@ -99,12 +99,14 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         self.output_schema = output_schema
         self.output_schema_as_tool = output_schema_as_tool
 
+        self.template_file = template_file
+        self.system_template = None
+        self.human_template = None
+        self.chat_template = None
+
         if self.use_model:
             self.validate_schema()
             self.validate_model()
-
-        self.system_prompt = load_prompt_template(system_prompt)
-        self.human_template = load_prompt_template(human_template)
 
     def validate_model(self):
         # Useful when using an identical chat model
@@ -141,9 +143,21 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             for tool_schema in self.tool_schemas
         ]
 
-    def _prepare_chat_prompt(self, *args, **kwargs):
+    def _prepare_chat_template(self, *args, **kwargs):
         """Prepare ready prompt that would be passed to chat model"""
-        raise NotImplementedError
+        templates_dict = load_prompt_template_file(self.template_file)
+        self.system_template = SystemMessagePromptTemplate.from_template(
+            template=templates_dict.get('system_template', """"""),
+            template_format='f-string',
+        )
+        self.human_template = HumanMessagePromptTemplate.from_template(
+            template=templates_dict.get('human_template', """"""),
+            template_format='f-string',
+        )
+        self.chat_template = ChatPromptTemplate(
+            messages=[self.system_template, self.human_template],
+            template_format='f-string'
+        )
 
     def anchor_call(self, *args, **kwargs):
         """Use this function to generate virtual data that match output schema in reality.

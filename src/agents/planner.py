@@ -9,9 +9,10 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 from typing_extensions import override
 
-from ..base.agent import AgentAsNode, register, InputT
+from ..base.agent import AgentAsNode, register
 from ..base.state import PlannerState
 from ..base.utils import DirectionRouter
+from ..utils import InputT
 
 
 @register(type="agent", name='planner')
@@ -33,25 +34,25 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
             model_api_key: str = None,
             output_schema_as_tool: bool = None,
             chat_model: BaseChatModel = None,
-            system_prompt: str = None,
-            human_template: str = None,
+            template_file: str = None,
             **kwargs
     ):
         super().__init__(
-            metadata,
-            input_schema,
-            edges,
-            tool_schemas,
-            output_schema,
-            model_name,
-            model_provider,
-            model_api_key,
-            output_schema_as_tool,
-            chat_model,
-            system_prompt,
-            human_template,
+            metadata=metadata,
+            input_schema=input_schema,
+            edges=edges,
+            tool_schemas=tool_schemas,
+            output_schema=output_schema,
+            model_name=model_name,
+            model_provider=model_provider,
+            model_api_key=model_api_key,
+            output_schema_as_tool=output_schema_as_tool,
+            chat_model=chat_model,
+            template_file=template_file,
             **kwargs
         )
+
+        super()._prepare_chat_template()
 
     @override
     def __call__(
@@ -63,7 +64,12 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
             **kwargs
     ) -> Command[Literal['retriever']]:
         # -------------------------------------------------
-        formatted_prompt = self._prepare_chat_prompt()
+        formatted_prompt = self.chat_template.invoke(
+            input={
+                'task': state['task'],
+                'max_subtasks': state.get('max_subtasks', 5),
+            }
+        )
         response = self.anchor_call(formatted_prompt)
         # -------------------------------------------------
         update_state = dict()
@@ -81,12 +87,8 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
         return ['a', 'b']
 
     @override
-    def chat_model_call(self, task: str, *args, **kwargs):
-        response = self.chat_model.invoke(task)
+    def chat_model_call(self, formatted_prompt: str, *args, **kwargs):
+        response = self.chat_model.invoke(formatted_prompt)
         tool_args = response.tool_calls[-1]['args']
 
         return tool_args
-
-    @override
-    def _prepare_chat_prompt(self, *args, **kwargs):
-        return ''
