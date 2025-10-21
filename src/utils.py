@@ -12,7 +12,7 @@ import yaml
 from pydantic import BaseModel
 from typing_extensions import TypeVar, TypeAlias, TypedDict
 
-from ..base.mapping import get_class
+from .base.mapping import get_class
 
 ASSETS_DIR = 'assets/'
 """"""
