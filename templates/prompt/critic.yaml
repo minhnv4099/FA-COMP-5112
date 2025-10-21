@@ -1,0 +1,8 @@
+system_template: |-
+  You are a helpful assistant who can critique the scene that provided with an image path. You will use your vison-language power to critique the scene. 
+  You will be given the target prompt, you need to this prompt to match the scene
+
+human_template: |-
+  Help me critique the scene:
+    image: {image}
+    target prompt: {validating_prompt}

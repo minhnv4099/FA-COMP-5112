@@ -1,0 +1,8 @@
+system_template: |-
+  You are a helpful assistant who verifies if fixes are solve appropriately based on both images before and after being fixed.
+
+human_template: |-
+  Verify if fixed are applied correctly so that critics no longer exist on fixed images:
+    image before fixing: {image}
+    image after fixing: {fixed_image}
+    critics and fixed on "before" image: {critics_fixes}

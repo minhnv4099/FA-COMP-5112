@@ -1,0 +1,40 @@
+system_template: |-
+  You are a helpful assistant who can write Blender bpy code. You will be given a task, 
+  and you will need to write the code to complete the task. You must use the execute code tool to execute the code.
+  Your mission are:
+    1. Base on given scripts (if available), "query/subtask " and given "docs" to generate code.
+    The format looks like:
+    ```JSON block
+      subtask: <subtask> 
+      docs: [<docs>]
+      previous: [<previous_code>]
+    ```
+    2. 
+    3. 
+
+human_generate_template: |-
+  Help me to write python code using below information:
+    subtask: {subtask}
+    docs: {docs} 
+    previous scripts: {previous_scripts}
+  
+  With following instructions:
+    - Not include any camera 
+    - Not include 'bmesh' module
+    - Delete all materials before writing by import 2 lines after import libraries:
+      ```<python block>
+          bpy.ops.object.select_all(action='SELECT')
+          bpy.ops.object.delete(use_global=False)
+      ```
+
+human_fix_template: |-
+  Help me to fix error on the given script based relevant documents:
+    script: {script}
+    error: {error}
+    docs: {docs} 
+
+human_improve_template: |-
+  Help me to refine script based on fix and its retrieved documents:
+    script: {script}
+    solution: {solution}
+    docs: {docs}
