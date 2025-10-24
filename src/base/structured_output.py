@@ -3,7 +3,7 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 from pydantic import BaseModel, Field
-from typing_extensions import Sequence, Mapping
+from typing_extensions import Sequence
 
 from .mapping import register
 
@@ -64,10 +64,20 @@ class CriticOutput(BaseOutput):
         description="List of (critic, fix) pairs in the given image")
 
 
+class CriticSatisfiedSolution(BaseOutput):
+    """The schema used to response whether the solution/fix is applied to solve each item critic and fix"""
+
+    critic: str = Field(description="A critic that exists in an image pointed out by the critic agent")
+
+    satisfied: str = Field(description="Whether the critic is solve appropriately. "
+                                       "Set value 'YES' if it solved, otherwise 'PARTIAL' along with detected critic.")
+
+    solution: str = Field(description="The solution that will be applied to solve existing critics.")
+
+
 @register(type='structured_output', name='verification')
 class VerificationOutput(BaseOutput):
     """Output schema for the verification agent"""
 
-    verification_solutions: Sequence[Mapping[str, str]] = Field(
-        description="Verify if detected critics are solve correctly based suggested fixes, "
-                    "and also provide fixes otherwise ")
+    css_list: Sequence[CriticSatisfiedSolution] = Field(
+        description="The list of tuples of (critic, satisfied, solution)")

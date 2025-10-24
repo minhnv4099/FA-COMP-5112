@@ -43,7 +43,7 @@ def execute_script(
 
 
 @tool(parse_docstring=True)
-def write_script(script: str, file_path: str) -> None:
+def write_script(script: str, file_path: str, run_manager: Optional[CallbackManagerForToolRun] = None) -> None:
     """Write a python script to a file with file path
 
     Args:

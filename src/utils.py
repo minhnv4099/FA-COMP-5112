@@ -2,6 +2,7 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+import base64
 import os
 import subprocess
 from dataclasses import dataclass
@@ -33,6 +34,11 @@ OutputT = TypeVar("OutputT", bound=StateLike)
 ContextT = TypeVar("ContextT", bound=StateLike)
 
 NodeT = TypeVar("NodeT", bound=StateLike)
+
+
+def load_image_content(image_path: str):
+    with open(image_path, 'rb') as f:
+        return base64.b64encode(f.read()).decode("utf-8")
 
 
 def execute(script_path: str):
