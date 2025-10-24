@@ -16,7 +16,7 @@ from ..base.agent import AgentAsNode, register
 from ..base.utils import DirectionRouter
 from ..utils import InputT
 
-logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @register(type="agent", name='retriever')
@@ -28,12 +28,13 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
     def __init__(
             self,
             metadata: dict = None,
-            input_schema: Any = None,
             edges: dict[str, tuple[str]] = None,
+            input_schema: Any = None,
             tool_schemas: list = None,
             output_schema: Any = None,
             db_path: str = None,
             embedding_name: str = None,
+            n_docs: int = None,
             **kwargs
     ):
         super().__init__(
@@ -60,7 +61,7 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
         )
         self.retrieving_engine = self.db.as_retriever(
             search_type='similarity',
-            search_kwargs={'k': 1}
+            search_kwargs={'k': n_docs}
         )
 
     def validate_retrieving(self):
@@ -79,23 +80,34 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
             config: RunnableConfig = None,
             **kwargs
     ) -> Union[dict, Command[Literal['coding']], Send]:
-        # logging.info(f"retrieve \n\t{state}")
+        start_message = "-" * 50 + self.name + "-" * 50
+        logger.info(start_message)
+        logger.info(f"queries: {state['queries']}")
+
         retrieved_docs: dict[int, list] = dict()
         for i, query in enumerate(state['queries']):
+            # -------------------------------------------------
             docs = self.retrieving_engine.invoke(query)
+            # -------------------------------------------------
             retrieved_docs[i] = [doc.page_content for doc in docs]
 
         update_state = {
-            'caller': 'retriever',
-            'has_docs': True,
-            'is_sub_call': True,
             'coding_task': state['coding_task'],
             'queries': state['queries'],
             'retrieved_docs': retrieved_docs,
-            "messages":
-                {'role': f"assistant",
-                 "content": f"Retriever Agent result documents when '{state['coding_task']}'"}
+            'caller': 'retriever',
+            'is_sub_call': True,
+            'has_docs': True,
+            "messages": {
+                'role': f"assistant",
+                "content": f"Retriever Agent result documents when '{state['coding_task']}'"
+            }
         }
+
+        logger.info(f"retrieved_docs: {retrieved_docs}")
+        end_message = "*" * (100 + len(self.name))
+        logger.info(end_message)
+
         # return update_state
         return DirectionRouter.goto(state=update_state, node='coding', method='command')
 

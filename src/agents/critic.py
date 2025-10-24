@@ -15,6 +15,7 @@ from ..base.agent import AgentAsNode, register
 from ..base.utils import DirectionRouter, Command, Send
 from ..utils import DEFAULT_CAMERA_SETTING_FILE, ANCHOR_FILE, SAVE_CRITIC_DIR
 from ..utils import InputT, OutputT
+from ..utils import load_image_content
 from ..utils import write_script, execute
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class CriticAgent(AgentAsNode, name='Critic'):
             validating_prompt: str = None,
             template_file: str = None,
             camera_setting_file: str = None,
+            max_critics: int = None,
             **kwargs
     ):
         super().__init__(
@@ -59,7 +61,6 @@ class CriticAgent(AgentAsNode, name='Critic'):
             template_file=template_file,
             **kwargs
         )
-
         super()._prepare_chat_template()
         self.validating_prompt = validating_prompt
         self.combined_script_template = "{creation_script}\n\n{additional_script}"
@@ -68,8 +69,7 @@ class CriticAgent(AgentAsNode, name='Critic'):
         self.anchor_script_path = anchor_script_path if anchor_script_path else ANCHOR_FILE
         self.save_rendered_dir = save_rendered_dir if save_rendered_dir else SAVE_CRITIC_DIR
 
-        os.makedirs(save_rendered_dir, exist_ok=True)
-        os.makedirs(Path(anchor_script_path).parent, exist_ok=True)
+        self.max_critics = max_critics
 
     @override
     def __call__(
@@ -80,27 +80,39 @@ class CriticAgent(AgentAsNode, name='Critic'):
             config: RunnableConfig = None,
             **kwargs
     ) -> Command | Send | dict:
-        script = state['current_script']
-        ready_render_script = self._process_script(script)
+        self._make_dirs()
+        start_message = "-" * 50 + self.name + "-" * 50
+        logger.info(start_message)
 
-        rendered_image_paths = self._run_to_get_rendered_images(ready_render_script)[0:2]
+        script = state['current_script']
+        logger.info("Setup camera to capture images")
+        ready_render_script = self._process_script(script)
+        rendered_image_paths = self._run_to_get_rendered_images(ready_render_script)
+        logger.info(f"Rendered images: {rendered_image_paths}")
 
         critics_fixes = dict()
         fixes = []
         for i, image in enumerate(rendered_image_paths):
             # -----------------------------------------------
+            # logger.info(f"image ({i+1}/{len(rendered_image_paths)}: {image}")
             formatted_prompt = self.chat_template.invoke({
-                'image': image,
+                'image': load_image_content(image),
                 'validating_prompt': self.validating_prompt,
+                'max_critics': self.max_critics,
             })
-            response = self.anchor_call(formatted_prompt)
+            response = self.chat_model_call(formatted_prompt)
+            logger.info(f"image ({i + 1}/{len(rendered_image_paths)}): {image}: {len(response)} critics")
             # -----------------------------------------------
             critics_fixes[i] = response
             fixes.extend([d['fix'] for d in response])
 
+        # logger.info(f'critics_fixes: {critics_fixes}')
+        logger.info(f'fixes: {len(fixes)}')
         # ----------process critic-fixe list-----------
         #
         # ---------------------------------------------
+        end_message = "*" * (100 + len(self.name))
+        logger.info(end_message)
 
         update_state = {
             'queries': fixes,
@@ -138,6 +150,15 @@ class CriticAgent(AgentAsNode, name='Critic'):
 
         return combined_script
 
+    def _make_dirs(self):
+        par = Path(self.anchor_script_path).parent
+        import shutil
+        shutil.rmtree(self.save_rendered_dir, ignore_errors=True)
+        shutil.rmtree(par, ignore_errors=True)
+
+        os.makedirs(self.save_rendered_dir, exist_ok=True)
+        os.makedirs(par, exist_ok=True)
+
     @override
     def anchor_call(self, formatted_prompt: str, *args, **kwargs):
         return [
@@ -153,4 +174,5 @@ class CriticAgent(AgentAsNode, name='Critic'):
 
     @override
     def chat_model_call(self, formatted_prompt: str, *args, **kwargs):
-        raise NotImplementedError
+        ai_message = self.chat_model.invoke(formatted_prompt)
+        return ai_message.tool_calls[-1]['args']['critic_fix_list']

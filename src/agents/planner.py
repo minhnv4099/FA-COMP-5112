@@ -2,6 +2,7 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+import logging
 from typing import Any, Literal
 
 from langchain_core.language_models import BaseChatModel
@@ -13,6 +14,8 @@ from ..base.agent import AgentAsNode, register
 from ..base.state import PlannerState
 from ..base.utils import DirectionRouter
 from ..utils import InputT
+
+logger = logging.getLogger(__name__)
 
 
 @register(type="agent", name='planner')
@@ -35,6 +38,7 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
             output_schema_as_tool: bool = None,
             chat_model: BaseChatModel = None,
             template_file: str = None,
+            max_subtasks: int = None,
             **kwargs
     ):
         super().__init__(
@@ -51,8 +55,10 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
             template_file=template_file,
             **kwargs
         )
-
+        # logger.info('Initialize Planner Agent')
         super()._prepare_chat_template()
+        self.max_subtasks = max_subtasks
+        # logger.info(f'Chat template: {self.chat_template}')
 
     @override
     def __call__(
@@ -63,23 +69,30 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
             config: RunnableConfig = None,
             **kwargs
     ) -> Command[Literal['retriever']]:
+        start_message = "-" * 50 + self.name + "-" * 50
+        logger.info(start_message)
+        logger.info(f"Given TASK: {state['task']}, Max subtasks: {self.max_subtasks}")
         # -------------------------------------------------
         formatted_prompt = self.chat_template.invoke(
             input={
                 'task': state['task'],
-                'max_subtasks': state.get('max_subtasks', 5),
-            }
-        )
-        response = self.anchor_call(formatted_prompt)
+                'max_subtasks': self.max_subtasks,
+            })
+        response = self.chat_model_call(formatted_prompt)
         # -------------------------------------------------
-        update_state = dict()
-        update_state['queries'] = response
-        update_state['coding_task'] = 'generate'
-        update_state['has_docs'] = False
-        update_state['is_sub_call'] = False
-        update_state["messages"] = {'role': "assistant", "content": "Planner Agent returned results"}
-        update_state['caller'] = 'planner'
+        logger.info(f"{len(response)} subtasks: {response}")
+        end_message = "*" * (100 + len(self.name))
+        logger.info(end_message)
 
+        update_state = dict()
+        update_state['coding_task'] = 'generate'
+        update_state['is_sub_call'] = False
+        update_state['queries'] = response
+        update_state['has_docs'] = False
+        update_state['caller'] = 'planner'
+        update_state["messages"] = {'role': "assistant", "content": "Planner Agent returned results"}
+
+        # direct 'coding' agent to generate scripts
         return DirectionRouter.goto(state=update_state, node='coding', method='command')
 
     @override
@@ -89,6 +102,6 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
     @override
     def chat_model_call(self, formatted_prompt: str, *args, **kwargs):
         response = self.chat_model.invoke(formatted_prompt)
-        tool_args = response.tool_calls[-1]['args']
+        tool_args = response.tool_calls[-1]['args']['subtasks']
 
         return tool_args
