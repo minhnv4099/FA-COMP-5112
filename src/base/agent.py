@@ -5,14 +5,14 @@
 from typing import Union, Generic, Any
 
 from langchain.chat_models.base import BaseChatModel, init_chat_model
-from langchain.prompts import SystemMessagePromptTemplate, HumanMessagePromptTemplate, ChatPromptTemplate
+from langchain_core.prompts import SystemMessagePromptTemplate, HumanMessagePromptTemplate, ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langgraph.config import RunnableConfig
 
 from .mapping import register
-from ..utils.files import load_prompt_template_file
-from ..utils.schema import fetch_schema
-from ..utils.typing import StateT, InputT, OutputT, ContextT
+from ..utils import StateT, InputT, OutputT, ContextT
+from ..utils import fetch_schema
+from ..utils import load_prompt_template_file
 
 
 class BaseAgent:
@@ -110,16 +110,21 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
 
     def validate_model(self):
         # Useful when using an identical chat model
+        import os
+        base_url = os.getenv("BASE_URL")
+        api_key = os.getenv('OPENROUTER_API_KEY')
         if not self.chat_model:
             assert self.model_name, "A model name must be provided (e.g. gpt-4o, gpt-4o-mini)"
             self.chat_model = init_chat_model(
                 model=self.model_name,
                 model_provider=self.model_provider,
+                base_url=base_url,
+                api_key=api_key,
                 rate_limiter=InMemoryRateLimiter(
                     requests_per_second=0.1,
                     check_every_n_seconds=0.1,
                     max_bucket_size=10
-                )
+                ),
             )
 
         self.chat_model = self.chat_model.bind_tools(self.tool_schemas)
@@ -146,6 +151,7 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     def _prepare_chat_template(self, *args, **kwargs):
         """Prepare ready prompt that would be passed to chat model"""
         templates_dict = load_prompt_template_file(self.template_file)
+
         self.system_template = SystemMessagePromptTemplate.from_template(
             template=templates_dict.get('system_template', """"""),
             template_format='f-string',
