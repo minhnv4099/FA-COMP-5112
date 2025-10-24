@@ -29,7 +29,7 @@ template_file: templates/prompt/verification.yaml
 use_model: True
 
 model_name: gpt-4o-mini
-model_provider: openai
+model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True
 chat_model: null

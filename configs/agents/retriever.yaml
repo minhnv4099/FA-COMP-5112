@@ -6,6 +6,7 @@ metadata:
 
 db_path: ${hydra:runtime.cwd}/vectorstores/faiss
 embedding_name: all-MiniLM-L6-v2.gguf2.f16.gguf
+n_docs: 1
 
 input_schema:
   type: state

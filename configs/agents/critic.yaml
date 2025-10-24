@@ -5,8 +5,9 @@ metadata:
   description: This node acts as a critic agent, analyzes, points out flaws in given images and gives fixes
 
 save_rendered_dir: assets/rendered_images/critic/
-anchor_script_path: assets/blender_script/critic_anchor.py
-validating_prompt: nothing
+anchor_script_path: assets/blender_script/anchor_critic.py
+validating_prompt: null
+max_critics: 4
 
 input_schema:
   type: state
@@ -25,7 +26,7 @@ template_file: templates/prompt/critic.yaml
 use_model: True
 
 model_name: gpt-4o-mini
-model_provider: openai
+model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True
 chat_model: null
