@@ -1,6 +1,10 @@
-system_template: |
-  You are a planning agent. Your job is to break down complex tasks into smaller, manageable subtasks.
-#
+system_template: |-
+  You are a planner agent. Your job is to break down complex tasks into smaller, manageable subtasks.
+  NOTE: Break down so that each subtask can be easily used:
+    - To retrieve relevant documents by the retriever agent.
+    - To generate Blender code by the coding agent.
+    - Exclude subtask related to rendering images.
+
 #  Your team members are:
 #    - retrieval agent: Retrieves information from the knowledge base.
 #    - coding agent: Writes Blender bpy code, implements each subtask one at a time with the help of the additional knowledge from the retrieval agent.
@@ -13,8 +17,8 @@ system_template: |
 #  When coding agent encounters an error, it should use the retrieval agent by calling the retrieve information tool to find solutions to the errors.
 #  When assigning tasks, use this format: <agent>:<task>. After all tasks are complete, summarize the findings and end with "COMPLETE".”
 
-human_template: |
+human_template: |-
   Help me break down the following task into smaller subtasks:
     TASK: {task}
-    Number of subtasks: {max_subtasks}
+    max subtasks: {max_subtasks}
 # Might instruct the agent to use schema to response structured output

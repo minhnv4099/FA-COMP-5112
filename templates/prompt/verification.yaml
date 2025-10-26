@@ -1,8 +1,22 @@
 system_template: |-
-  You are a helpful assistant who verifies if fixes are solve appropriately based on both images before and after being fixed.
+  You are a helpful assistant who verifies if fixes are solved appropriately by comparing 2 images.
 
-human_template: |-
-  Verify if fixed are applied correctly so that critics no longer exist on fixed images:
-    image before fixing: {image}
-    image after fixing: {fixed_image}
-    critics and fixed on "before" image: {critics_fixes}
+human_template:
+  - type: text
+    text: Image from original script
+  - type: image_url
+    image_url:
+      url: "data:image/png;base64,{image}"
+      detail: high
+  - type: text
+    text: Image from fixed script
+  - type: image_url
+    image_url:
+      url: "data:image/png;base64,{fixed_image}"
+      detail: high
+  - type: text
+    text: |-
+      Let's verify images based on:
+      Predefined list of pairs of critics and fixes: {critics_fixes}
+      or
+      Changes: {additional_prompt}
