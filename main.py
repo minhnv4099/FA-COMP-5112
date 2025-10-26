@@ -10,12 +10,12 @@ from src.base.coordinator import Coordinator
 try:
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv('.env')
 except FileNotFoundError as e:
     pass
 
 
-@hydra.main(config_path="configs", config_name="config", version_base=None)
+@hydra.main(config_path="configs", config_name="job", version_base=None)
 def main(cfg: DictConfig):
     planner_agent = Coordinator.build_agent(agent_config=cfg.agent.planner)
     retriever_agent = Coordinator.build_agent(agent_config=cfg.agent.retriever)
@@ -30,18 +30,8 @@ def main(cfg: DictConfig):
             critic_agent, verification_agent, user_proxy_agent,),
         **cfg.graph
     )
-
     graph.init_graph()
-    # graph.save_image_graph()
-    # exit()
-    input = {
-        'task': "create a 3D chair",
-    }
-
-    response = graph.invoke(
-        input=input,
-        config={'recursion_limit': 200},
-    )
+    graph.invoke(cfg.task)
 
 
 if __name__ == '__main__':

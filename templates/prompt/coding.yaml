@@ -7,15 +7,17 @@ system_template: |-
   Never delete or rewrite the whole script. Always edit, extend, or refine the existing code instead. Keep all previous logic unless it is proven wrong or redundant. 
   When fixing or refining, only modify the minimal necessary parts and preserve all useful sections, comments, and structure. 
   With following instructions
-      - DO NOT remove the current script
-      - DO NOT include any path to file/folder
-      - Do NOT add any camera
-      - Prioritize using "Hierarchical scene graph"
-      - Utilize human-given inputs 
-      - If need to use 'bmesh' module, must import it after importing 'bpy'
-      - Use using function for each component if needed
-      - Always initialize new object/data instead of get active ones
-      - The output is refined python script.
+    - DO NOT remove the current script
+    - DO NOT include any path to file/folder
+    - Do NOT add any camera
+    - Prioritize using "Hierarchical scene graph"
+    - Utilize human-given inputs 
+    - If need to use 'bmesh' module, must import it after importing 'bpy'
+    - Use using function for each component if needed
+    - Always use functions you created
+    - Always initialize new object/data instead of get active ones
+    - The output is refined python script.
+
 
 human_generate_template: |-
   Help me to write Blender code using below information by using previous scripts, and summary of the subtask.

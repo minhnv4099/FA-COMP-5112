@@ -9,7 +9,7 @@ save_rendered_dir: assets/rendered_images/verification
 anchor_script_path: assets/blender_script/anchor_verification.py
 refined_script_path: assets/blender_script/refined_version.py
 
-verification_attempts: 1
+verification_attempts: 2
 
 input_schema:
   type: state
@@ -21,8 +21,7 @@ tool_schemas: [ ]
 
 edges:
   in_coming: [ ]
-  out_going:
-    - end
+  out_going: [ ]
 
 template_file: templates/prompt/verification.yaml
 

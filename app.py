@@ -86,49 +86,6 @@ def main(cfg):
             )
             coding_model_selector.change(change_model, inputs=coding_model_selector)
 
-            # planner_model_selector = gr.Dropdown(
-            #     choices=["gpt-4o-mini"],
-            #     label="Model for Planner Agent",
-            #     value="gpt-4o-mini",
-            #     show_label=True,
-            #     interactive=True,
-            #     min_width=3,
-            #
-            # )
-            # retriever_model_selector = gr.Dropdown(
-            #     choices=["gpt-4o-mini"],
-            #     value="gpt-4o-mini",
-            #     label="Model for Retriever Agent",
-            #     show_label=True,
-            #     interactive=True,
-            # )
-
-            # critic_model_selector = gr.Dropdown(
-            #     choices=["gpt-4o-mini"],
-            #     value="gpt-4o-mini",
-            #     label="Model for Critic Agent",
-            #     show_label=True,
-            #     interactive=True,
-            # )
-            # verification_model_selector = gr.Dropdown(
-            #     choices=["gpt-4o-mini"],
-            #     value="gpt-4o-mini",
-            #     label="Model for Verification Agent",
-            #     show_label=True,
-            #     interactive=True,
-            # )
-
-            # coding_model_state = gr.State(value=coding_model_selector.value)
-            # planner_model_state = gr.State(value=coding_model_selector.value)
-            # retriever_model_state = gr.State(value=retriever_model_selector.value)
-            # critic_model_state = gr.State(value=critic_model_selector.value)
-            # verification_model_state = gr.State(value=verification_model_selector.value)
-
-            # planner_model_selector.change(change_model, inputs=coding_model_selector, outputs=planner_model_state)
-            # retriever_model_selector.change(change_model, inputs=coding_model_selector, outputs=retriever_model_state)
-            # critic_model_selector.change(change_model, inputs=coding_model_selector, outputs=critic_model_state)
-            # verification_model_selector.change(change_model, inputs=coding_model_selector, outputs=verification_model_state)
-
     demo.queue(max_size=100).launch(share=True, show_api=True)
 
 

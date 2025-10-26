@@ -32,8 +32,12 @@ tests/
 outputs/
 api_keys/
 data/
-#assets/*
-
+assets/**/*.png
+assets/**/*.py
+test_*.py
+tmp*.py
+.gradio/
+main.py
 # Self-created files
 
 

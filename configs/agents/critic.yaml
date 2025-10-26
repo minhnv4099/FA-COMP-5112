@@ -7,7 +7,7 @@ metadata:
 save_rendered_dir: assets/rendered_images/critic/
 anchor_script_path: assets/blender_script/anchor_critic.py
 validating_prompt: null
-max_critics: 4
+max_critics: 3
 
 input_schema:
   type: state
