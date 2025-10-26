@@ -41,7 +41,7 @@ class UserAgent(AgentAsNode, name="User", use_model=False):
             logger.info(f"GOOD BYE!!!")
         else:
             state['queries'] = [user_query]
-            state['additional_user_prompts'] = user_query
+            state['user_additional_prompt'] = user_query
             state['caller'] = 'user'
             next_node = 'coding'
 

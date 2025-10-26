@@ -78,9 +78,11 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
                 'task': state['task'],
                 'max_subtasks': self.max_subtasks,
             })
-        response = self.chat_model_call(formatted_prompt)
+
+        response, messages = self.chat_model_call(formatted_prompt)
         # -------------------------------------------------
-        logger.info(f"{len(response)} subtasks: {response}")
+        # logger.info(f"{len(response)} subtasks: {response}")
+        self._log_conversation(logger, self._get_conversation(messages))
         end_message = "*" * (100 + len(self.name))
         logger.info(end_message)
 
@@ -88,9 +90,10 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
         update_state['coding_task'] = 'generate'
         update_state['is_sub_call'] = False
         update_state['queries'] = response
+        update_state['validating_prompt'] = state['task']
         update_state['has_docs'] = False
         update_state['caller'] = 'planner'
-        update_state["messages"] = {'role': "assistant", "content": "Planner Agent returned results"}
+        update_state["messages"] = messages
 
         # direct 'coding' agent to generate scripts
         return DirectionRouter.goto(state=update_state, node='coding', method='command')
@@ -99,9 +102,12 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
     def anchor_call(self, formatted_prompt, *args, **kwargs):
         return ['a', 'b']
 
-    @override
-    def chat_model_call(self, formatted_prompt: str, *args, **kwargs):
-        response = self.chat_model.invoke(formatted_prompt)
-        tool_args = response.tool_calls[-1]['args']['subtasks']
+    # @override
+    # def chat_model_call(self, formatted_prompt: str, update_messages: list, *args, **kwargs):
+    #     ai_message = self.chat_model.invoke(formatted_prompt)
+    #     self._store_messages(update_messages, *formatted_prompt.to_messages(), ai_message)
+    #
+    #     return self._get_output(ai_message), update_messages
 
-        return tool_args
+    # def _get_output(self, ai_message: AIMessage):
+    #     return ai_message.tool_calls[-1]['args']['subtasks']

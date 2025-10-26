@@ -7,6 +7,7 @@ from typing import Any, Literal, Union
 
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain_core.runnables import RunnableLambda
 from langgraph.config import RunnableConfig
 from langgraph.runtime import Runtime
 from langgraph.types import Command, Send
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 @register(type="agent", name='retriever')
-class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
+class RetrieverAgent(AgentAsNode, name="Retriever", use_model=True):
     """
     The Retriever Agent class
     """
@@ -32,19 +33,22 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
             input_schema: Any = None,
             tool_schemas: list = None,
             output_schema: Any = None,
-            db_path: str = None,
             embedding_name: str = None,
             n_docs: int = None,
+            db_path: str = None,
+            template_file: str = None,
             **kwargs
     ):
         super().__init__(
             metadata=metadata,
-            input_schema=input_schema,
             edges=edges,
+            input_schema=input_schema,
             tool_schemas=tool_schemas,
             output_schema=output_schema,
+            template_file=template_file,
             **kwargs,
         )
+        super()._prepare_chat_template()
 
         gpt4all_kwargs = {'allow_download': 'True'}
         self.embedding = GPT4AllEmbeddings(
@@ -53,6 +57,7 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
             client=None
         )
 
+        logger.info('Load vectorstore')
         self.db_path = db_path
         self.db = FAISS.load_local(
             self.db_path,
@@ -64,12 +69,14 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
             search_kwargs={'k': n_docs}
         )
 
+        self.chain = RunnableLambda(self._retrieve) | self.chat_template | self.chat_model
+
     def validate_retrieving(self):
         """Validate retrieving settings"""
 
-    @override
-    def validate_model(self):
-        raise NotImplementedError
+    # @override
+    # def validate_model(self):
+    #     raise NotImplementedError
 
     @override
     def __call__(
@@ -82,14 +89,26 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
     ) -> Union[dict, Command[Literal['coding']], Send]:
         start_message = "-" * 50 + self.name + "-" * 50
         logger.info(start_message)
-        logger.info(f"queries: {state['queries']}")
-
+        messages = []
         retrieved_docs: dict[int, list] = dict()
         for i, query in enumerate(state['queries']):
             # -------------------------------------------------
             docs = self.retrieving_engine.invoke(query)
+            docs_content = [doc.page_content for doc in docs]
+            metadata_docs = [doc.metadata for doc in docs]
+            logger.info(f"query {i + 1}/{len(state['queries'])}: {query}")
+            logger.info(f"docs metadata: {metadata_docs}")
+
+            formatted_template = self.chat_template.invoke({'query': query, 'retrieved_docs': docs})
+
+            summary, query_messages = self.chat_model_call(formatted_template)
+            # logger.info(f"retrieved_docs: {summary}")
             # -------------------------------------------------
-            retrieved_docs[i] = [doc.page_content for doc in docs]
+            retrieved_docs[i] = summary
+            if messages:
+                messages.extend(query_messages[1:])
+            else:
+                messages.extend(query_messages)
 
         update_state = {
             'coding_task': state['coding_task'],
@@ -98,19 +117,26 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=False):
             'caller': 'retriever',
             'is_sub_call': True,
             'has_docs': True,
-            "messages": {
-                'role': f"assistant",
-                "content": f"Retriever Agent result documents when '{state['coding_task']}'"
-            }
+            "messages": messages
         }
 
-        logger.info(f"retrieved_docs: {retrieved_docs}")
+        self._log_conversation(logger, self._get_conversation(messages))
         end_message = "*" * (100 + len(self.name))
         logger.info(end_message)
 
         # return update_state
         return DirectionRouter.goto(state=update_state, node='coding', method='command')
 
-    @override
-    def chat_model_call(self, query, *args, **kwargs):
-        raise NotImplementedError
+    #
+    # @override
+    # def chat_model_call(self, formated_template, *args, **kwargs):
+    #     ai_message = self.chat_model.invoke(formated_template)
+    #     return ai_message.tool_calls[-1]['args']['summary']
+
+    def _retrieve(self, query):
+        docs = self.retrieving_engine.invoke(query)
+        retrieved_docs = [doc.page_content for doc in docs]
+        return {
+            "query": query,
+            "retrieved_docs": retrieved_docs
+        }

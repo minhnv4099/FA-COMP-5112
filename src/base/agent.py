@@ -5,8 +5,10 @@
 from typing import Union, Generic, Any
 
 from langchain.chat_models.base import BaseChatModel, init_chat_model
+from langchain_core.messages import ToolMessage, AIMessage
 from langchain_core.prompts import SystemMessagePromptTemplate, HumanMessagePromptTemplate, ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
+from langchain_core.utils.interactive_env import is_interactive_env
 from langgraph.config import RunnableConfig
 
 from .mapping import register
@@ -102,7 +104,7 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         self.template_file = template_file
         self.system_template = None
         self.human_template = None
-        self.chat_template = None
+        self.chat_template: ChatPromptTemplate = None
 
         if self.use_model:
             self.validate_schema()
@@ -165,16 +167,6 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             template_format='f-string'
         )
 
-    def anchor_call(self, *args, **kwargs):
-        """Use this function to generate virtual data that match output schema in reality.
-        The main purpose is just test workflow but not call chat model really
-        """
-        raise NotImplementedError
-
-    def chat_model_call(self, *args, **kwargs):
-        """This method actually calls chat model and response follow ``output_schema``"""
-        raise NotImplementedError
-
     def __call__(
             self,
             state: InputT | dict,
@@ -202,3 +194,59 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         # -------------------------------
         raise NotImplementedError
         # -------------------------------
+
+    def anchor_call(self, *args, **kwargs):
+        """Use this function to generate virtual data that match output schema in reality.
+        The main purpose is just test workflow but not call chat model really
+        """
+        raise NotImplementedError
+
+    def chat_model_call(self, formatted_prompt: str, *args, **kwargs):
+        """This method actually calls chat model and response follow ``output_schema``"""
+        ai_message = self.chat_model.invoke(formatted_prompt)
+        response = self._get_output(ai_message)
+
+        tool_call = self._get_tool_call(ai_message)
+        tool_message = self._create_ai_message_from_toll_call(content=response)
+        messages = [*formatted_prompt.to_messages(), tool_message]
+
+        return response, messages
+
+    def _get_pretty_prep(self, content: str):
+        from json import dumps, loads
+        if isinstance(content, str):
+            return dumps(loads(content), indent=4)
+        return dumps(content, indent=4)
+
+    def _get_output(self, ai_message):
+        dict_output = ai_message.tool_calls[-1]['args']
+        key = list(dict_output.keys())[0]
+        return dict_output[key]
+
+    def _get_tool_call(self, ai_message):
+        tool_call = {}
+        if ai_message.tool_calls:
+            tool_call['input'] = ai_message.tool_calls[-1]['args']
+            tool_call['id'] = ai_message.tool_calls[-1]['id']
+
+        return tool_call
+
+    def _create_tool_message(self, content, id):
+        return ToolMessage(content=content, tool_call_id=id)
+
+    def _create_ai_message_from_toll_call(self, content):
+        return AIMessage(content=content)
+
+    def _get_conversation(self, messages):
+        conversation = ""
+        for m in messages:
+            conversation += m.pretty_repr(is_interactive_env())
+            conversation += '\n'
+
+        return conversation.strip()
+
+    def _log_conversation(self, logger, conversation=None):
+        if isinstance(conversation, list):
+            conversation = self._get_conversation(conversation)
+
+        logger.info(f"💬 💬 💬 💬 💬 💬 💬 💬 💬 CONVERSATION 💬 💬 💬 💬 💬 💬 💬 💬 💬\n{conversation}")
