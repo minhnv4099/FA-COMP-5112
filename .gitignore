@@ -29,6 +29,10 @@ MANIFEST
 # Self-created folders
 models/
 tests/
+outputs/
+api_keys/
+data/
+#assets/*
 
 # Self-created files
 
