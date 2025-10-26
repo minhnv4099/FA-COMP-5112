@@ -17,4 +17,3 @@ human_template:
     image_url:
       url: "data:image/png;base64,{image}"
       detail: high
-

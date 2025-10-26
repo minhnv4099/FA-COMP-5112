@@ -1,5 +1,8 @@
 system_template: |-
   You are a helpful assistant who verifies if fixes are solved appropriately by comparing 2 images.
+  Use fixed image to check whether:
+    - fixes are applied appropriately to solve critic on the original image (Changes will be null)
+    - changes are applied on original image ('critics and fixes' will be null)
 
 human_template:
   - type: text
@@ -8,12 +11,14 @@ human_template:
     image_url:
       url: "data:image/png;base64,{image}"
       detail: high
+
   - type: text
     text: Image from fixed script
   - type: image_url
     image_url:
       url: "data:image/png;base64,{fixed_image}"
       detail: high
+
   - type: text
     text: |-
       Let's verify images based on:

@@ -45,24 +45,6 @@ camera_data = [
         "rotation_euler": (math.radians(68.4036), math.radians(0), math.radians(-44.2024)),  # Nhìn vào (0,0,0) từ góc
         "filepath": f"{save_dir}/render_D_"
     },
-    # {
-    #     "name": "Camera_E",
-    #     "location": (-5.70548, 4.69015, 1.94329),
-    #     "rotation_euler": (math.radians(76.8001), math.radians(0), math.radians(228.601)),  # Nhìn vào (0,0,0) từ góc
-    #     "filepath": f"{save_dir}/render_E_"
-    # },
-    # {
-    #     "name": "Camera_F",
-    #     "location": (5.24471, 3.51796, 1.29235),
-    #     "rotation_euler": (math.radians(78.8004), math.radians(0), math.radians(-235.001)),  # Nhìn vào (0,0,0) từ góc
-    #     "filepath": f"{save_dir}/render_F_"
-    # },
-    # {
-    #     "name": "Camera_G",
-    #     "location": (5.17812, -4.54725, 2.1893),
-    #     "rotation_euler": (math.radians(72.8017), math.radians(0), math.radians(47.4005)),  # Nhìn vào (0,0,0) từ góc
-    #     "filepath": f"{save_dir}/render_G_"
-    # },
 ]
 
 cameras = []
@@ -101,5 +83,3 @@ for cam in cameras:
 
     # 3. Execute the render command and save the still image (write_still=True)
     bpy.ops.render.render(write_still=True)
-
-print("Render images successfully")
