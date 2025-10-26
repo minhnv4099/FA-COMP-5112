@@ -1,3 +1,9 @@
+---
+title: 5112_project
+app_file: app.py
+sdk: gradio
+sdk_version: 5.49.1
+---
 # 3D Blender code generation
 
 ## Install requirements
@@ -79,4 +85,10 @@ python main.py --task=<create a 3d chair>
             ├── file_1.pdf
             ├── ...
             └── fiel_n.pdf
+```
 
+## Test Demo
+
+[Demo here](https://huggingface.co/spaces/nguyenminh4099/5112_project/tree/main)
+
+## References
