@@ -2,6 +2,7 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+import os.path
 import subprocess
 from typing import Any, Optional
 
@@ -23,6 +24,10 @@ def execute_script(
 
     Returns: Any
     """
+    if not os.path.isfile(script):
+        from src.utils import write_script
+        script = write_script(script)
+
     process = subprocess.Popen(
         args=['python', script],
         shell=False,
@@ -39,11 +44,15 @@ def execute_script(
     process.kill()
     process.wait()
 
-    return result
+    if len(result['error']) == 0:
+        result['error'] = "NO ERROR 👍 👍 👍"
+
+    return result['error']
 
 
 @tool(parse_docstring=True)
-def write_script(script: str, file_path: str, run_manager: Optional[CallbackManagerForToolRun] = None) -> None:
+def write_script(script: str, file_path: str = None,
+                 run_manager: Optional[CallbackManagerForToolRun] = None) -> None | str:
     """Write a python script to a file with file path
 
     Args:
@@ -52,5 +61,5 @@ def write_script(script: str, file_path: str, run_manager: Optional[CallbackMana
 
     Returns: None
     """
-    with open(file_path, mode='w') as f:
-        f.write(script)
+    from src.utils import write_script
+    return write_script(script, file_path)

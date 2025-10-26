@@ -32,19 +32,18 @@ class PlannerOutput(BaseOutput):
 
 @register(type='structured_output', name='retriever')
 class RetrieverOutput(BaseOutput):
-    """Always use this tool to structure your response to user
-    when they are asking about retrieve documents from your knowledge and/or external knowledge base."""
+    """Always use this tool to structure your response"""
 
-    retrieved_docs: list[dict[str, str | list[str]]] = Field(
-        description="Only 2 blender document about the given functionality")
+    summary: str = Field(
+        description="Summary of query and retrieved documents.")
 
 
 @register(type='structured_output', name='coding')
 class CodingOutput(BaseOutput):
     """Always use this output schema to response when generating code"""
 
-    script: str = Field(description="Generated script associated with given requirements"
-                                    "NOTE: only use 'script' as a key, no any additional prefix or/and suffix character")
+    script: str = Field(
+        description="Generated script. NOTE: only use 'script' as a key, no any additional prefix or/and suffix character")
 
 
 class CriticFixPair(BaseOutput):

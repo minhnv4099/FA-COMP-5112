@@ -45,7 +45,7 @@ def execute(script_path: str):
     python_option = '--python'
 
     process = subprocess.Popen(
-        args=['blender', '--background', python_option, script_path],
+        args=['python', script_path],
         shell=False,
         restore_signals=True,
         text=True,
@@ -63,7 +63,7 @@ def execute(script_path: str):
     return result
 
 
-def write_script(script: str, file_path: str) -> None:
+def write_script(script: str, file_path: str = None) -> None | str:
     """Write a python script to a file with file path
 
     Args:
@@ -72,8 +72,14 @@ def write_script(script: str, file_path: str) -> None:
 
     Returns: None
     """
+    if file_path is None:
+        file_path = 'tmp.py'
+
     with open(file_path, mode='w') as f:
         f.write(script)
+
+    return file_path
+
 
 
 def fetch_schema(schema):
@@ -96,6 +102,10 @@ def load_prompt_template_file(prompt: str | Path):
             prompt_content = Path(prompt).read_text()
             return prompt_content
     return prompt
+
+
+def dump_list(sequence: list[str]):
+    ...
 
 
 class NotCompletedError(Exception):

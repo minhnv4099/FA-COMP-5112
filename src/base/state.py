@@ -133,15 +133,18 @@ class VerificationState(BaseState):
     critics_fixes: Annotated[dict[int, list[dict]], ...]
     """Sequence of critics and fixes provided by the `critic agent`"""
 
+    additional_prompt: Annotated[str, ...]
+    """Additional prompt provided by user"""
+
 
 @register(type='state', name='user')
 class UserPromptUpState(BaseState):
     """The input state for User Agent"""
 
-    additional_user_prompts: Annotated[Sequence[str], ...]
+    user_additional_prompt: Annotated[Sequence[str], ...]
     """Additional prompts provided by user"""
 
-    current_script: Annotated[str, "The mose recent code"]
+    # current_script: Annotated[str, "The mose recent code"]
     """The mose recent generated script after the first two phases in the process"""
 
 
