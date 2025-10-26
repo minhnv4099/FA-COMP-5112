@@ -12,13 +12,15 @@ from .critic import CriticAgent
 from ..base.agent import AgentAsNode, register
 from ..base.utils import DirectionRouter
 from ..utils import InputT, OutputT
+from ..utils import NoRenderImages
+from ..utils import NotSupportUserRefinement
 from ..utils import load_image_content
 
 logger = logging.getLogger(__name__)
 
 
 @register(type="agent", name='verification')
-class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
+class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
     """
     The Verification Agent class
     """
@@ -86,6 +88,11 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
 
         fixed_rendered_images = self._run_to_get_rendered_images(processed_script, save_dir)
         logger.info(f"Images AFTER: {fixed_rendered_images}")
+        if not fixed_rendered_images:
+            raise NoRenderImages(
+                f"No image rendered by Verification Agent",
+                state=state
+            )
 
         critics_fixes = state['critics_fixes']
         critic_satisfied_solution = []
@@ -96,15 +103,14 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
         for i, (ri, fi) in enumerate(zip(rendered_images, fixed_rendered_images)):
             logger.info(f"image ({i + 1}/{len(fixed_rendered_images)}): '{ri}' vs '{fi}'")
             if 'additional_prompt' in state:
-                logger.info("Verify critic and fix")
+                logger.info("Verify user additional prompt")
                 additional_prompt = state['additional_prompt']
                 critic_fix = None
                 logger.info(f"Additional prompt: {additional_prompt}")
             else:
-                logger.info("Verify user additional prompt")
+                logger.info("Verify critic and fix")
                 additional_prompt = None
                 critic_fix = critics_fixes[i]
-                # logger.info(f"<critics, fixes> ({len(critic_fix)}): {critic_fix}")
             # -----------------------------------------------------------------
             formatted_prompt = self.chat_template.invoke({
                 'image': load_image_content(ri),
@@ -113,16 +119,25 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
                 'additional_prompt': additional_prompt,
             })
             response, query_messages = self.chat_model_call(formatted_prompt)
+            # -----------------------------------------------
+            to_log_messages = [
+                *self.chat_template.invoke({
+                    'image': ri,
+                    'fixed_image': fi,
+                    'critics_fixes': critic_fix,
+                    'additional_prompt': additional_prompt
+                }).to_messages(),
+                query_messages[-1]
+            ]
             if messages:
-                messages.extend(query_messages[1:])
+                messages.extend(to_log_messages[1:])
             else:
-                messages.extend(query_messages)
-            # -----------------------------------------------------------------
-            # logger.info(f"<critics_satisfied_solution>: {response}")
+                messages.extend(to_log_messages)
+
             critic_satisfied_solution.extend(response)
         # ----------process critic_satisfied_solution list-----------
         #
-        # ---------------------------------------------
+        # -----------------------------------------------------------
         unsatisfied_critics = list(filter(
             lambda d: d['satisfied'].lower() != "yes",
             critic_satisfied_solution,
@@ -136,8 +151,14 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
             self.verification_tries += 1
             next_node = 'coding'
         else:
+            logger.info("Exceed verification attempts")
             next_node = 'user'
             self.verification_tries = 0
+
+            raise NotSupportUserRefinement(
+                state=state,
+                msg="STOP. We now don't support user prompt, because deploying on Gradio"
+            )
 
         end_message = "*" * (100 + len(self.name))
         logger.info(end_message)
@@ -149,21 +170,7 @@ class VerificationAgent(CriticAgent, AgentAsNode, name='Verification'):
             'caller': 'verification',
             'has_docs': False,
             'rendered_images': fixed_rendered_images,
+            'messages': messages
         }
-        self._log_conversation(logger, messages)
+        self.log_conversation(logger, messages)
         return DirectionRouter.goto(state=update_state, node=next_node, method='command')
-
-    @override
-    def anchor_call(self, formatted_prompt: str, critics_fixes: list, *args, **kwargs):
-        for i, d in enumerate(critics_fixes):
-            if i % 2 == 0:
-                d['satisfied'] = 'YES'
-            else:
-                d['satisfied'] = 'Partially, some details are not solved'
-
-        return critics_fixes
-
-    # @override
-    # def chat_model_call(self, formatted_prompt: str, *args, **kwargs):
-    #     ai_message = self.chat_model.invoke(formatted_prompt)
-    #     return ai_message.tool_calls[-1]['args']['css_list']

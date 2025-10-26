@@ -15,6 +15,7 @@ from ..base.agent import AgentAsNode, register
 from ..base.utils import DirectionRouter, Command, Send
 from ..utils import DEFAULT_CAMERA_SETTING_FILE, ANCHOR_FILE, SAVE_CRITIC_DIR
 from ..utils import InputT, OutputT
+from ..utils import NoRenderImages
 from ..utils import load_image_content
 from ..utils import write_script, execute
 
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 @register(type="agent", name='critic')
-class CriticAgent(AgentAsNode, name='Critic'):
+class CriticAgent(AgentAsNode, node_name='Critic'):
     """
     The Critic Agent class
     """
@@ -89,6 +90,8 @@ class CriticAgent(AgentAsNode, name='Critic'):
         ready_render_script, save_dir = self._process_script(script)
 
         rendered_image_paths = self._run_to_get_rendered_images(ready_render_script, save_dir)
+        if not rendered_image_paths:
+            raise NoRenderImages(f"No image rendered by Critic Agent", state)
         logger.info(f"Rendered images: {rendered_image_paths}")
 
         critics_fixes = dict()
@@ -98,29 +101,36 @@ class CriticAgent(AgentAsNode, name='Critic'):
         messages = []
         for i, image in enumerate(rendered_image_paths):
             # -----------------------------------------------
-            # logger.info(f"image ({i+1}/{len(rendered_image_paths)}: {image}")
             formatted_prompt = self.chat_template.invoke({
                 'image': load_image_content(image),
                 'validating_prompt': validating_prompt,
                 'max_critics': self.max_critics,
             })
             response, query_messages = self.chat_model_call(formatted_prompt)
+            # -----------------------------------------------
+            to_log_messages = [
+                *self.chat_template.invoke({
+                    'image': image,
+                    'validating_prompt': validating_prompt,
+                    'max_critics': self.max_critics,
+                }).to_messages(),
+                query_messages[-1]
+            ]
             if messages:
-                messages.extend(query_messages[1:])
+                messages.extend(to_log_messages[1:])
             else:
-                messages.extend(query_messages)
+                messages.extend(to_log_messages)
 
             logger.info(f"image ({i + 1}/{len(rendered_image_paths)}): {image}: {len(response)} critics")
             # -----------------------------------------------
             critics_fixes[i] = response
             fixes.extend([d['fix'] for d in response])
 
-        # logger.info(f'critics_fixes: {critics_fixes}')
         logger.info(f'fixes: {len(fixes)}')
         # ----------process critic-fixe list-----------
         #
         # ---------------------------------------------
-        self._log_conversation(logger, messages)
+        self.log_conversation(logger, messages)
         end_message = "*" * (100 + len(self.name))
         logger.info(end_message)
 
@@ -132,6 +142,7 @@ class CriticAgent(AgentAsNode, name='Critic'):
             'has_docs': False,
             'critics_fixes': critics_fixes,
             'rendered_images': rendered_image_paths,
+            'messages': messages
         }
 
         return DirectionRouter.goto(state=update_state, node='coding', method='command')
@@ -165,26 +176,7 @@ class CriticAgent(AgentAsNode, name='Critic'):
 
     def _make_dirs(self):
         par = Path(self.anchor_script_path).parent
-        import shutil
-        shutil.rmtree(self.save_rendered_dir, ignore_errors=True)
+        # shutil.rmtree(self.save_rendered_dir, ignore_errors=True)
 
         os.makedirs(self.save_rendered_dir, exist_ok=True)
         os.makedirs(par, exist_ok=True)
-
-    @override
-    def anchor_call(self, formatted_prompt: str, *args, **kwargs):
-        return [
-            {
-                'critic': 'The armrests aren\'t attached to the seat',
-                'fix': 'Move armrests down by y-axis'
-            },
-            {
-                'critic': 'The legs are too long',
-                'fix': 'Decrease length of legs'
-            }
-        ]
-
-    # @override
-    # def chat_model_call(self, formatted_prompt: str, *args, **kwargs):
-    #     ai_message = self.chat_model.invoke(formatted_prompt)
-    #     return ai_message.tool_calls[-1]['args']['critic_fix_list']

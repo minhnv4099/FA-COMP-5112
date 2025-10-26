@@ -4,7 +4,6 @@
 #
 import logging
 import os
-import shutil
 from copy import deepcopy
 from typing import Union
 
@@ -19,13 +18,14 @@ from ..base.agent import AgentAsNode
 from ..base.mapping import register
 from ..base.tool import execute_script, write_script
 from ..base.utils import DirectionRouter
-from ..utils import ScriptWithError, InputT, load_prompt_template_file
+from ..utils import InputT, load_prompt_template_file
+from ..utils import ScriptWithError, ExceedFixErrorAttempts
 
 logger = logging.getLogger(__name__)
 
 
 @register(type="agent", name='coding')
-class CodingAgent(AgentAsNode, name='Coding', use_model=True):
+class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
     """
     The Coding Agent class
     """
@@ -68,7 +68,7 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
         )
         self.check_error_file = check_error_file
         self.script_folder = script_folder
-        shutil.rmtree(self.script_folder, ignore_errors=True)
+        # shutil.rmtree(self.script_folder, ignore_errors=True)
         os.makedirs(self.script_folder, exist_ok=True)
         self.anchor_script_file = anchor_script_file
         self.save_scripts = save_scripts
@@ -110,6 +110,7 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
     ) -> Union[dict, Command, Send, None]:
         start_message = "-" * 50 + self.name + "-" * 50
         logger.info(start_message)
+        logger.info(len(state['messages']))
         # -------------------------------------------------------------------
         # This block is always executed only one time
         # store state from the official call
@@ -122,7 +123,6 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             self.copy_state['num_queries'] = len(state['queries'])
             self.copy_state['query_offset'] = 0
             self.copy_state['previous_scripts'] = []
-            self.copy_state['messages'] = []
             self.get_retrieved_docs = False
             logger.info(f'Number of queries: {self.copy_state["num_queries"]}')
         else:
@@ -141,7 +141,6 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             self.get_retrieved_docs = True
         # later call this agent must pass above
         # -------------------------------------------------------------------
-
         # operate on each query
         try:
             # while generating and executing a script, the error message could be raised
@@ -161,17 +160,20 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             self.copy_state['previous_scripts'].append(script)
             self.copy_state['current_script'] = script
             self.copy_state['query_offset'] += 1
-            self.copy_state['message'] = messages
+            self.copy_state['messages'] = messages
 
         except ScriptWithError as e:
             logger.info(' ⚠️️‼️ Catch error, retrieve document... ⚠️️‼️')
             self.fix_error_tries += 1
             if self.fix_error_tries > self.fix_error_attempts:
                 logger.info(f"Number of tries to fix error exceed allowed attempts ({self.fix_error_attempts})")
-                raise Exception
+                raise ExceedFixErrorAttempts(
+                    f'Cannot fix error after {self.fix_error_attempts} due to model\'s power',
+                    state=state,
+                )
             """Recall Coding Agent if catch command when executing script
             Before fix code, call Retriever Agent to get relevant documents
-            `e.command` is a command call retriever with command and command script
+            `e.command` is a command call retriever with command and command script.
             """
             return e.command
 
@@ -198,7 +200,7 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             elif self.copy_state['caller'] == 'verification':
                 next_node = 'verification'
             elif self.copy_state['caller'] == 'user':
-                next_node = 'verification',
+                next_node = 'verification'
             else:
                 return None
         logger.info(f'coding -> {next_node}')
@@ -231,7 +233,7 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
         save_dir = os.path.join(caller_folder, str(n))
         os.makedirs(save_dir, exist_ok=True)
         for i, script in enumerate(self.copy_state['previous_scripts']):
-            file = os.path.join(save_dir, f"query_{i}.py")
+            file = os.path.join(save_dir, f"script_{i}.py")
             write_script.invoke({
                 'script': script,
                 'file_path': file,
@@ -250,17 +252,13 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             f"{state['coding_task']}: query {1 + self.copy_state['query_offset']}/{self.copy_state['num_queries']}")
         logger.info(f"Number of previous scripts: {len(self.copy_state['previous_scripts'])}")
         logger.info(f"subtask: {query}")
-        # -----------precess docs-----------
-        #
-        # ----------------------------------
         # ---------------------------------------------------
         formatted_prompt = chat_template.invoke({
             "subtask": query,
-            "previous_scripts": self.copy_state['previous_scripts'],
-            "summary": docs,
+            "previous_scripts": self._dump_scripts(self.copy_state['previous_scripts']),
+            "summary": docs
         })
         # ---------------------------------------------------
-
         return formatted_prompt
 
     def _prepare_fix_prompt(self, state):
@@ -273,9 +271,7 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             'error': state['queries'],
             'summary': state['retrieved_docs']
         })
-        # fixed_script = self._generate(formatted_prompt)
         # ---------------------------------------------------
-
         return formatted_prompt
 
     def _prepare_improve_prompt(self, state):
@@ -290,11 +286,9 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
         formatted_prompt = chat_template.invoke({
             'current_script': state['current_script'],
             'solution': query,
-            'summary': docs,
+            'summary': docs
         })
-        # improved_script = self._generate(formatted_prompt)
         # ---------------------------------------------------
-
         return formatted_prompt
 
     def _generate(self, formatted_prompt):
@@ -313,7 +307,7 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
             messages.append(tool_message)
 
             """Log conversation"""
-            self._log_conversation(logger, messages)
+            self.log_conversation(logger, messages)
 
             # no error yielded
             if 'no error' in error.lower():
@@ -325,28 +319,20 @@ class CodingAgent(AgentAsNode, name='Coding', use_model=True):
                         'current_script': generated_script,
                         'coding_task': 'fix',
                         'queries': [error, ],
-                        'message': messages,
+                        'messages': messages
                     },
                     node='retriever', method='command'
                 ))
 
-    @override
-    def anchor_call(self, formatted_prompt, *args):
-        with open("assets/blender_script/anchor_4.py", 'r') as f:
-            return f.read()
-
     def _dump_scripts(self, scripts):
         if not scripts:
             return []
-        return f"\n{('=' * 100).join(scripts)}"
+        script_string = ""
+        for script in scripts:
+            script_string += '=' * 150
+            script_string += "\n```python\n"
+            script_string += script
+            script_string += "\n```\n"
+            script_string += '=' * 150 + '\n'
 
-    # @override
-    # def chat_model_call(self, formatted_prompt):
-    #     ai_message = self.chat_model.invoke(formatted_prompt)
-    #     response = self._get_output(ai_message)
-    #
-    #     return response, formatted_prompt.to_messages()
-
-    # @override
-    # def _get_output(self, ai_message):
-    #     pass
+        return script_string

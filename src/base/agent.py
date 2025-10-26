@@ -2,28 +2,40 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from typing import Union, Generic, Any
+import logging
+from typing import Union, Generic, Any, ClassVar
 
 from langchain.chat_models.base import BaseChatModel, init_chat_model
 from langchain_core.messages import ToolMessage, AIMessage
-from langchain_core.prompts import SystemMessagePromptTemplate, HumanMessagePromptTemplate, ChatPromptTemplate
+from langchain_core.prompts import (
+    ChatPromptTemplate,
+    ChatMessagePromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate
+)
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.utils.interactive_env import is_interactive_env
 from langgraph.config import RunnableConfig
+from pydantic import ConfigDict, SkipValidation
 
 from .mapping import register
 from ..utils import StateT, InputT, OutputT, ContextT
 from ..utils import fetch_schema
 from ..utils import load_prompt_template_file
 
+logger = logging.getLogger(__name__)
+
 
 class BaseAgent:
     """The Base Agent class"""
-    name: str
+
+    name: str = None
     """Unique name of the class"""
 
-    use_model: bool
+    use_model: bool = None
     """Whether the agent uses model as brain"""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 @register(type="agent", name='base')
@@ -33,10 +45,27 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     An agent has an LLM acting as brain and tools, allowing to interact with external knowledge, environment.
     """
 
+    SUPPORTED_MODEL: ClassVar[list] = [
+        "gpt-4o-mini",
+        "gpt-4o",
+    ]
+
+    PROVIDER_TO_ENV: ClassVar[dict[str, str]] = {
+        None: "OPENROUTER_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "openai": "OPENAI_API_KEY"
+    }
+
+    PROVIDER_TO_BASE_URL: ClassVar[dict[str, str]] = {
+        "openrouter": "https://openrouter.ai/api/v1",
+        None: "https://openrouter.ai/api/v1",
+        "openai": None
+    }
+
     metadata: dict[str, str] = None
     """Metadata used when attach to a graphs"""
 
-    input_schema: Union[InputT, StateT] = None
+    input_schema: SkipValidation[Union[InputT, StateT]] = None
     """Input state schema to the node"""
 
     edges: dict[str, tuple] = None
@@ -55,7 +84,7 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     output_schema: Any = None
     """The structure output the chat model should return"""
 
-    model_name: str = None
+    model_name: str
     """Name of LLM (e.g. ``gpt-4o``, ``gpt-4o-mini``)"""
 
     model_provider: str = None
@@ -70,8 +99,10 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     chat_model: BaseChatModel = None
     """The chat model, useful when it's shared across multiple nodes/places"""
 
-    def __init_subclass__(cls, name: str = None, use_model: bool = True):
-        cls.name = name
+    template_file: str = None
+
+    def __init_subclass__(cls, node_name: str = None, use_model: bool = True):
+        cls.name = node_name
         cls.use_model = use_model
 
     def __init__(
@@ -102,40 +133,63 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         self.output_schema_as_tool = output_schema_as_tool
 
         self.template_file = template_file
-        self.system_template = None
-        self.human_template = None
-        self.chat_template: ChatPromptTemplate = None
+        self.system_template: ChatMessagePromptTemplate
+        self.human_template: ChatMessagePromptTemplate
+        self.chat_template: ChatPromptTemplate
 
         if self.use_model:
-            self.validate_schema()
-            self.validate_model()
+            self._initialize_schema()
+            self._initialize_model()
 
-    def validate_model(self):
-        # Useful when using an identical chat model
+    @classmethod
+    def _check_model_name(cls, model_name: str):
+        if model_name not in cls.SUPPORTED_MODEL:
+            raise ValueError(f"We now only support model: {', '.join(cls.SUPPORTED_MODEL)}, not {model_name}")
+
+        return model_name
+
+    @classmethod
+    def _check_chat_model(cls, model: Any):
+        if model is not None:
+            raise ValueError(f"Now we only accept instantiate `chat_model` from 'model_name'")
+        return None
+
+    @classmethod
+    def _check_model_provider(cls, model_provider):
+        if model_provider not in cls.PROVIDER_TO_ENV:
+            logger.warning(
+                f"Now we only use models from provider: {', '.join(cls.PROVIDER_TO_ENV.keys())}, not {model_provider}"
+                f"Use 'openrouter', default")
+            return None
+        return model_provider
+
+    def _initialize_model(self):
         import os
-        base_url = os.getenv("BASE_URL")
-        api_key = os.getenv('OPENROUTER_API_KEY')
-        if not self.chat_model:
-            assert self.model_name, "A model name must be provided (e.g. gpt-4o, gpt-4o-mini)"
-            self.chat_model = init_chat_model(
-                model=self.model_name,
-                model_provider=self.model_provider,
-                base_url=base_url,
-                api_key=api_key,
-                rate_limiter=InMemoryRateLimiter(
-                    requests_per_second=0.1,
-                    check_every_n_seconds=0.1,
-                    max_bucket_size=10
-                ),
-            )
+        base_url = self.PROVIDER_TO_BASE_URL[self.model_provider]
+
+        if self.model_api_key is None:
+            api_key = os.getenv(self.PROVIDER_TO_ENV[self.model_provider])
+        else:
+            api_key = self.model_api_key
+
+        self.chat_model = init_chat_model(
+            model=self.model_name,
+            # model_provider=self.model_provider,
+            base_url=base_url,
+            api_key=api_key,
+            rate_limiter=InMemoryRateLimiter(
+                requests_per_second=0.1,
+                check_every_n_seconds=0.1,
+                max_bucket_size=10
+            ),
+        )
 
         self.chat_model = self.chat_model.bind_tools(self.tool_schemas)
 
     def validate_node(self):
         """Validate node settings"""
-        ...
 
-    def validate_schema(self):
+    def _initialize_schema(self):
         if self.tool_schemas and not isinstance(self.tool_schemas, list):
             self.tool_schemas = [self.tool_schemas, ]
         if self.output_schema and not isinstance(self.output_schema, list):
@@ -207,8 +261,8 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         response = self._get_output(ai_message)
 
         tool_call = self._get_tool_call(ai_message)
-        tool_message = self._create_ai_message_from_toll_call(content=response)
-        messages = [*formatted_prompt.to_messages(), tool_message]
+        ai_tool_message = self._create_ai_message_from_toll_call(content=response)
+        messages = [*formatted_prompt.to_messages(), ai_tool_message]
 
         return response, messages
 
@@ -237,7 +291,8 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     def _create_ai_message_from_toll_call(self, content):
         return AIMessage(content=content)
 
-    def _get_conversation(self, messages):
+    @classmethod
+    def get_conversation(cls, messages):
         conversation = ""
         for m in messages:
             conversation += m.pretty_repr(is_interactive_env())
@@ -245,8 +300,10 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
 
         return conversation.strip()
 
-    def _log_conversation(self, logger, conversation=None):
+    @classmethod
+    def log_conversation(cls, _logger, conversation=None):
         if isinstance(conversation, list):
-            conversation = self._get_conversation(conversation)
+            conversation = cls.get_conversation(conversation)
 
-        logger.info(f"💬 💬 💬 💬 💬 💬 💬 💬 💬 CONVERSATION 💬 💬 💬 💬 💬 💬 💬 💬 💬\n{conversation}")
+        _logger.info(f"💬 💬 💬 💬 💬 💬 💬 💬 💬 CONVERSATION 💬 💬 💬 💬 💬 💬 💬 💬 💬\n{conversation}")
+        _logger.info(f"💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬")

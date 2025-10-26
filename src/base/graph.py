@@ -13,8 +13,10 @@ from langgraph.graph import START, END
 from langgraph.graph.state import StateGraph, CompiledStateGraph
 from typing_extensions import Generic
 
+from .agent import AgentAsNode
 from .mapping import register
 from ..utils import ASSETS_DIR
+from ..utils import BreakGraphOperation
 from ..utils import NotFoundEdgeError
 from ..utils import StateT, ContextT, InputT, OutputT, NodeT
 from ..utils import fetch_schema
@@ -150,13 +152,35 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
         self.complied_graph = self.graph.compile()
 
+    def __call__(self, task, *args, **kwargs):
+        return self.invoke(task)
+
     def invoke(
             self,
-            input: Union[StateT, InputT],
+            input: Union[StateT, InputT, str],
             context: Optional[ContextT] = None,
             config: Optional[RunnableConfig] = None,
     ):
-        return self.complied_graph.invoke(input=input, config=config, context=context)
+        if isinstance(input, str):
+            input = {'task': input}
+        message = "Successful"
+        try:
+            state = self.complied_graph.invoke(
+                input=input,
+                config={'recursion_limit': 200},
+                context=context
+            )
+        except BreakGraphOperation as e:
+            state = e.state
+            message = e.msg
+
+        # AgentAsNode.log_conversation(logger, state['messages'])
+
+        return (
+            message,
+            state['current_script'],
+            AgentAsNode.get_conversation(state['messages']),
+        )
 
     def pretty_print_dict(self):
         for k, v in self.graph.__dict__.items():

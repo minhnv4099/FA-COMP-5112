@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 @register(type="agent", name='retriever')
-class RetrieverAgent(AgentAsNode, name="Retriever", use_model=True):
+class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
     """
     The Retriever Agent class
     """
@@ -74,10 +74,6 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=True):
     def validate_retrieving(self):
         """Validate retrieving settings"""
 
-    # @override
-    # def validate_model(self):
-    #     raise NotImplementedError
-
     @override
     def __call__(
             self,
@@ -102,7 +98,6 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=True):
             formatted_template = self.chat_template.invoke({'query': query, 'retrieved_docs': docs})
 
             summary, query_messages = self.chat_model_call(formatted_template)
-            # logger.info(f"retrieved_docs: {summary}")
             # -------------------------------------------------
             retrieved_docs[i] = summary
             if messages:
@@ -120,18 +115,12 @@ class RetrieverAgent(AgentAsNode, name="Retriever", use_model=True):
             "messages": messages
         }
 
-        self._log_conversation(logger, self._get_conversation(messages))
+        self.log_conversation(logger, messages)
         end_message = "*" * (100 + len(self.name))
         logger.info(end_message)
 
         # return update_state
         return DirectionRouter.goto(state=update_state, node='coding', method='command')
-
-    #
-    # @override
-    # def chat_model_call(self, formated_template, *args, **kwargs):
-    #     ai_message = self.chat_model.invoke(formated_template)
-    #     return ai_message.tool_calls[-1]['args']['summary']
 
     def _retrieve(self, query):
         docs = self.retrieving_engine.invoke(query)

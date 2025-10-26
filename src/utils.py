@@ -121,3 +121,21 @@ class ScriptWithError(Exception):
 
 class NotFoundEdgeError(ValueError):
     ...
+
+
+class BreakGraphOperation(Exception):
+    def __init__(self, msg, state):
+        self.state = state
+        self.msg = msg
+
+
+class NoRenderImages(BreakGraphOperation):
+    ...
+
+
+class ExceedFixErrorAttempts(BreakGraphOperation):
+    ...
+
+
+class NotSupportUserRefinement(BreakGraphOperation):
+    ...

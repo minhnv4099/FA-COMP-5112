@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @register(name='user', type='agent')
-class UserAgent(AgentAsNode, name="User", use_model=False):
+class UserAgent(AgentAsNode, node_name="User", use_model=False):
     """
     The User Agent class
     """

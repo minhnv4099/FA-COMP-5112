@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @register(type="agent", name='planner')
-class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
+class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
     """
     The Planner Agent class
     """
@@ -55,10 +55,8 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
             template_file=template_file,
             **kwargs
         )
-        # logger.info('Initialize Planner Agent')
         super()._prepare_chat_template()
         self.max_subtasks = max_subtasks
-        # logger.info(f'Chat template: {self.chat_template}')
 
     @override
     def __call__(
@@ -82,7 +80,7 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
         response, messages = self.chat_model_call(formatted_prompt)
         # -------------------------------------------------
         # logger.info(f"{len(response)} subtasks: {response}")
-        self._log_conversation(logger, self._get_conversation(messages))
+        self.log_conversation(logger, messages)
         end_message = "*" * (100 + len(self.name))
         logger.info(end_message)
 
@@ -97,17 +95,3 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
 
         # direct 'coding' agent to generate scripts
         return DirectionRouter.goto(state=update_state, node='coding', method='command')
-
-    @override
-    def anchor_call(self, formatted_prompt, *args, **kwargs):
-        return ['a', 'b']
-
-    # @override
-    # def chat_model_call(self, formatted_prompt: str, update_messages: list, *args, **kwargs):
-    #     ai_message = self.chat_model.invoke(formatted_prompt)
-    #     self._store_messages(update_messages, *formatted_prompt.to_messages(), ai_message)
-    #
-    #     return self._get_output(ai_message), update_messages
-
-    # def _get_output(self, ai_message: AIMessage):
-    #     return ai_message.tool_calls[-1]['args']['subtasks']
