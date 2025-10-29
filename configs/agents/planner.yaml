@@ -4,6 +4,8 @@ name: Planner
 metadata:
   description: This node acts as an planner agent, helps to break given task into smaller subtasks
 
+max_subtasks: 1
+
 input_schema:
   type: state
   name: planner
@@ -15,14 +17,14 @@ tool_schemas: [ ]
 edges:
   in_coming:
     - start
-  out_going:
-    - coding
+  out_going: [ ]
 
+template_file: templates/prompt/planner.yaml
 
 use_model: True
 
 model_name: gpt-4o-mini
-model_provider: openai
+model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True
 chat_model: null

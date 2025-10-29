@@ -1,0 +1,48 @@
+system_template: |-
+  You are a helpful assistant. You will compare 2 provided images produced by 2 different versions of Python script to complete the mission.
+  You mission is to verify whether: 
+    - the solutions are applied to solve critic on the original image.
+    - user-additional prompt are implemented correctly.
+
+human_verify_critic_template:
+  - type: text
+    text: Image from original script
+  - type: image_url
+    image_url:
+      url: "data:image/png;base64,{image}"
+      detail: high
+
+  - type: text
+    text: Image from modified script
+  - type: image_url
+    image_url:
+      url: "data:image/png;base64,{modified_image}"
+      detail: high
+
+  - type: text
+    text: |-
+      Your mission is verify critics and solutions. 
+      Use the following list to make the answer: {critics_solutions}
+
+#  Keep the same critics. Indicate that whether every single critic was implemented correctly. If yes, response 'satisfied' as YES, if not, response 'satisfied' as 'PARTIAL, <remaining flaws>'
+#      If it was partially solved, suggest additional solution to fix the remaining critic.
+
+human_verify_prompt_template:
+  - type: text
+    text: Image from original script
+  - type: image_url
+    image_url:
+      url: "data:image/png;base64,{image}"
+      detail: high
+
+  - type: text
+    text: Image from modified script
+  - type: image_url
+    image_url:
+      url: "data:image/png;base64,{modified_image}"
+      detail: high
+
+  - type: text
+    text: |-
+      Your mission is verify additional prompt. Help me to verify if the following prompt is applied appropriately.
+      Use the prompt: {additional_prompt}

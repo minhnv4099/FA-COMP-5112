@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - agents/planner
+  - agents/retriever
+  - agents/coding
+  - agents/critic
+  - agents/verification
+  - agents/user
+  - hydra
+  - graph
+  - _self_
+
+task: ???

@@ -2,24 +2,25 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from typing import Optional, Any, Literal
+import logging
+from typing import Any, Literal
+from typing_extensions import override
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
-from langgraph.runtime import Runtime
 from langgraph.types import Command
-from typing_extensions import override
 
-from src.base.agent import AgentAsNode, register, InputT
-from src.base.context import SharedContext
-from src.base.state import PlannerState
+from ..base.agent import AgentAsNode, register
+from ..base.state import PlannerState
+from ..base.utils import DirectionRouter
+from ..utils import InputT
+
+logger = logging.getLogger(__name__)
 
 
 @register(type="agent", name='planner')
-class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
-    """
-    The Planner Agent class
-    """
+class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
+    """The Planner Agent class"""
 
     @override
     def __init__(
@@ -34,45 +35,60 @@ class PlannerAgent(AgentAsNode, name='Planner', use_model=True):
             model_api_key: str = None,
             output_schema_as_tool: bool = None,
             chat_model: BaseChatModel = None,
+            template_file: str = None,
+            max_subtasks: int = None,
             **kwargs
     ):
         super().__init__(
-            metadata,
-            input_schema,
-            edges,
-            tool_schemas,
-            output_schema,
-            model_name,
-            model_provider,
-            model_api_key,
-            output_schema_as_tool,
-            chat_model,
+            metadata=metadata,
+            input_schema=input_schema,
+            edges=edges,
+            tool_schemas=tool_schemas,
+            output_schema=output_schema,
+            model_name=model_name,
+            model_provider=model_provider,
+            model_api_key=model_api_key,
+            output_schema_as_tool=output_schema_as_tool,
+            chat_model=chat_model,
+            template_file=template_file,
             **kwargs
         )
-
-    def anchor_call(self):
-        return ['a', 'b']
+        self._prepare_chat_template()
+        self.max_subtasks = max_subtasks
 
     @override
     def __call__(
             self,
             state: PlannerState | dict,
-            runtime: Optional[Runtime[RunnableConfig]] = None,
-            context: Optional[Runtime] = None,
-            config: Optional[Runtime[SharedContext]] = None,
+            runtime: RunnableConfig = None,
+            context: RunnableConfig = None,
+            config: RunnableConfig = None,
             **kwargs
     ) -> Command[Literal['retriever']]:
+        logger.info(self.opening_symbols)
+        logger.info(f"TASK: {state['task']}, Max subtasks: {self.max_subtasks}")
         # -------------------------------------------------
-        # response = self.chat_model.invoke(state['task'])
-        # tool_args = response.tool_calls[-1]['args']
-        # -------------------------------------------------
-        update_state = dict()
-        update_state['queries'] = self.anchor_call()
-        update_state['has_docs'] = False
-        update_state["messages"] = {'role': "assistant", "content": "Planner Agent returned results"}
-        update_state['coding_task'] = 'generate'
+        formatted_prompt = self.chat_template.invoke(
+            input={
+                'task': state['task'],
+                'max_subtasks': self.max_subtasks,
+            })
 
-        return Command(
-            update=update_state,
-            goto='coding'
-        )
+        response, messages = self.chat_model_call(formatted_prompt)
+        # -------------------------------------------------
+        logger.info(f"Number of delegated subtasks: {len(response)}")
+
+        self.log_conversation(logger, messages)
+        logger.info(self.ending_symbols)
+
+        update_state = dict()
+        update_state['coding_task'] = 'generate'
+        update_state['is_sub_call'] = False
+        update_state['queries'] = response
+        update_state['validating_prompt'] = state['task']
+        update_state['has_docs'] = False
+        update_state['caller'] = 'planner'
+        update_state["messages"] = messages
+
+        # direct 'coding' agent to generate scripts
+        return DirectionRouter.goto(state=update_state, node='coding', method='command')

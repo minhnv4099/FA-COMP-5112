@@ -2,21 +2,24 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import logging
 import os
+import logging
 from pathlib import Path
 from typing import Optional, Union
+from typing_extensions import Generic
 
+from langchain_core.runnables.graph import MermaidDrawMethod
 from langgraph.config import RunnableConfig
 from langgraph.graph import START, END
 from langgraph.graph.state import StateGraph, CompiledStateGraph
-from typing_extensions import Generic
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
-from .context import SharedContext
-from .dirs import ASSETS_DIR
-from .mapping import register
-from .typing import StateT, ContextT, InputT, OutputT, NodeT
-from ..utils import fetch_schema
+from .agent import AgentAsNode
+from .mapping import register, fetch_schema
+from ..utils import ASSETS_DIR
+from ..utils import BreakGraphOperation, NoConnectionEdges
+from ..utils import StateT, ContextT, InputT, OutputT, NodeT
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     """
 
     name: str
-    """Unique name of graph"""
+    """Name of graph"""
 
     graph: StateGraph[StateT, ContextT, InputT, OutputT]
     """Graph map with node as an agent"""
@@ -68,19 +71,28 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             **kwargs,
     ):
         self.name = name
-
         self.state_schema = fetch_schema(state_schema)
-        self.context_schema = context_schema
-        self.input_schema = input_schema
-        self.output_schema = output_schema
+        self.context_schema = fetch_schema(context_schema)
+        self.input_schema = fetch_schema(input_schema)
+        self.output_schema = fetch_schema(output_schema)
 
         self.nodes = nodes
         if not self.nodes:
             logger.critical("No any nodes")
+
         self.graph = StateGraph[StateT, ContextT, InputT, OutputT](
             state_schema=self.state_schema,
-            context_schema=SharedContext,
+            context_schema=self.context_schema,
+            input_schema=input_schema,
+            output_schema=output_schema
         )
+
+        self.is_interrupted = False
+        self.state = None
+        self.config = {
+            "configurable": {"thread_id": "form-1"},
+            'recursion_limit': 200
+        }
 
     @property
     def compiled(self):
@@ -91,7 +103,10 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             logger.critical(f"The graph isn't compiled yet. Compile it first!")
             return
         try:
-            image_bytes = self.complied_graph.get_graph().draw_mermaid_png()
+            image_bytes = self.complied_graph.get_graph().draw_mermaid_png(
+                max_retries=5, retry_delay=2.,
+                draw_method=MermaidDrawMethod.PYPPETEER
+            )
             if not file_path:
                 os.makedirs(ASSETS_DIR, exist_ok=True)
                 file_path = os.path.join(ASSETS_DIR, f"{self.name}.png")
@@ -101,7 +116,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
             logger.info(f"Write image of graph into '{file_path}'")
         except ValueError as e:
-            pass
+            print(e)
 
     def standardize_name_node(self, name):
         return name.replace(' ', '_').lower()
@@ -113,7 +128,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
                 node=name_node,
                 action=node,
                 metadata=node.metadata,
-                input_schema=node.input_schema,
+                input_schema=node.input_schema
             )
 
     def _add_edges(self, nodes: list[NodeT]):
@@ -123,43 +138,102 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
                 if isinstance(in_vertex, str):
                     if "start" in in_vertex:
                         in_vertex = START
-                        self.graph.add_edge(start_key=in_vertex, end_key=name_node)
+                    self._add_edge(start_key=in_vertex, end_key=name_node)
+
             for out_vertex in node.edges['out_going']:
                 if isinstance(out_vertex, str):
                     if "end" in out_vertex:
                         out_vertex = END
                     self.graph.add_edge(start_key=name_node, end_key=out_vertex)
 
+    def _add_conditional_edges(self):
+        raise NotImplementedError
+
+    def _add_edge(self, start_key, end_key):
+        try:
+            self.graph.add_edge(start_key, end_key)
+        except NoConnectionEdges:
+            pass
+
     def init_graph(self):
-        """Initialize the graph by adding nodes, connect them"""
+        """Initialize the graph by adding nodes, connect them and compile"""
         self._add_nodes(self.nodes)
         self._add_edges(self.nodes)
 
-        self.complied_graph = self.graph.compile()
+        self.complied_graph = self.graph.compile(checkpointer=MemorySaver())
+
+    def __call__(self, task, prompt, *args, **kwargs):
+        message = "Successful"
+        try:
+            if prompt:
+                logger.info('Operate prompt')
+                self.state = self._resume(prompt)
+            else:
+                logger.info('Operate task')
+                self.state = self._invoke(task)
+        except BreakGraphOperation as e:
+            self.state = e.state
+            message = e.msg
+
+        images = self.state.get('rendered_images', None)
+        if not images:
+            images = [None, None, None, None]
+
+        result = [
+            message,
+            self.state.get('current_script', None),
+            AgentAsNode.get_conversation(self.state['messages']),
+        ]
+        result.extend(images)
+
+        return result
 
     def invoke(
             self,
-            input: Union[StateT, InputT],
+            inputs: Union[StateT, InputT, str],
             context: Optional[ContextT] = None,
             config: Optional[RunnableConfig] = None,
     ):
-        return self.complied_graph.invoke(input=input, config=config, context=context)
+        if isinstance(inputs, str):
+            inputs = {'task': inputs}
+
+        try:
+            self.state = self.complied_graph.invoke(
+                input=inputs,
+                config=self.config,
+                context=context,
+            )
+            while True:
+                additional_prompt = input("Enter additional prompt (e.g. change color to red): ")
+
+                self.state = self._resume(additional_prompt)
+
+        except BreakGraphOperation as e:
+            self.state = e.state
+            AgentAsNode.log_conversation(logger, e.state['messages'])
+            return e.state, e.msg
+
+    def _invoke(
+            self,
+            input: Union[StateT, InputT, str],
+            context: Optional[ContextT] = None,
+            config: Optional[RunnableConfig] = None,
+    ):
+        if isinstance(input, str):
+            input = {'task': input}
+
+        self.state = self.complied_graph.invoke(
+            input=input,
+            config=self.config,
+            context=context,
+        )
+
+        # AgentAsNode.log_conversation(logger, state['messages'])
+        return self.state
+
+    def _resume(self, input):
+        return self.complied_graph.invoke(Command(resume=input), config=self.config)
 
     def pretty_print_dict(self):
         for k, v in self.graph.__dict__.items():
             print(f"{k}\n\t{v}\n{'=' * 50}")
-
-
-@register(name='initial_creation_phase', type='graph')
-class InitialCreationPhaseGraph(BaseGraph):
-    """This graph class represents for the first phase named Initial Creation Phase"""
-
-
-@register(name='auto_refinement_phase', type='graph')
-class AutoRefinementPhaseGraph(BaseGraph):
-    """This graph class represents for the second phase named Initial Creation Phase"""
-
-
-@register(name='user_guided_refinement_phase', type='graph')
-class UserGuidedRefinementPhaseGraph(BaseGraph):
-    """This graph class represents for the third phase named Initial Creation Phase"""

@@ -5,8 +5,11 @@ metadata:
   description: This node acts as a coding agent, generating Python code
     based on given subtask and relevant document or/and code snippet
 
-anchor_folder: assets/blender_script/
-fix_error_attempts: 2
+script_folder: assets/blender_script/
+anchor_script_file: assets/blender_script/anchor_coding.py
+check_error_file: assets/blender_script/check_error.py
+save_scripts: True
+fix_error_attempts: 10
 
 input_schema:
   type: state
@@ -17,23 +20,15 @@ output_schema:
 tool_schemas: [ ]
 
 edges:
-  in_coming:
-    - planner
-    - retriever
-  #    - critic
-  #    - verification
-  out_going:
-    - end
-#    - retriever
-#    - critic
-#    - verification
+  in_coming: [ ]
+  out_going: [ ]
 
+template_file: templates/prompt/coding.yaml
 
 use_model: True
 
-model_name: gpt-4o
-model_provider: openai
+model_name: gpt-4o-mini
+model_provider: ~
 #model_api_key: <API-KEY>
-
 output_schema_as_tool: True
 chat_model: null

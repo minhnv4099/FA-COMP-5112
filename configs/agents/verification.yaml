@@ -5,6 +5,12 @@ metadata:
   description: This node acts as a verification agent, verifies whether
     fixes provided by critic agent are successfully solved and suggest solutions if not
 
+save_rendered_dir: assets/rendered_images/verification
+anchor_script_path: assets/blender_script/anchor_verification.py
+camera_setting_file: ${agent.critic.camera_setting_file}
+
+verification_attempts: 3
+
 input_schema:
   type: state
   name: verification
@@ -14,16 +20,15 @@ output_schema:
 tool_schemas: [ ]
 
 edges:
-  in_coming:
-    - coding
-  out_going:
-    - coding
-    - end
+  in_coming: [ ]
+  out_going: [ ]
+
+template_file: templates/prompt/verification.yaml
 
 use_model: True
 
 model_name: gpt-4o-mini
-model_provider: openai
+model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True
 chat_model: null

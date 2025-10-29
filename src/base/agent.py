@@ -2,24 +2,40 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from typing import Optional, Union, Generic, Any
+import os
+import logging
+from typing import Union, Generic, Any, ClassVar
+from pydantic import ConfigDict, SkipValidation
 
 from langchain.chat_models.base import BaseChatModel, init_chat_model
+from langchain_core.messages import ToolMessage, AIMessage
+from langchain_core.prompts import (
+    ChatPromptTemplate,
+    ChatMessagePromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate
+)
 from langchain_core.rate_limiters import InMemoryRateLimiter
-from langgraph.runtime import Runtime
+from langchain_core.utils.interactive_env import is_interactive_env
+from langgraph.config import RunnableConfig
 
-from .mapping import register
-from .typing import StateT, InputT, OutputT, ContextT
-from ..utils import fetch_schema
+from .mapping import register, fetch_schema
+from ..utils import StateT, InputT, OutputT, ContextT
+from ..utils import load_prompt_template_file
+
+logger = logging.getLogger(__name__)
 
 
 class BaseAgent:
     """The Base Agent class"""
-    name: str
+
+    name: str = None
     """Unique name of the class"""
 
-    use_model: bool
+    use_model: bool = None
     """Whether the agent uses model as brain"""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 @register(type="agent", name='base')
@@ -29,10 +45,27 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     An agent has an LLM acting as brain and tools, allowing to interact with external knowledge, environment.
     """
 
+    SUPPORTED_MODEL: ClassVar[list] = [
+        "gpt-4o-mini",
+        "gpt-4o",
+    ]
+
+    PROVIDER_TO_ENV: ClassVar[dict[str, str]] = {
+        None: "OPENROUTER_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "openai": "OPENAI_API_KEY"
+    }
+
+    PROVIDER_TO_BASE_URL: ClassVar[dict[str, str]] = {
+        "openrouter": "https://openrouter.ai/api/v1",
+        None: "https://openrouter.ai/api/v1",
+        "openai": None
+    }
+
     metadata: dict[str, str] = None
     """Metadata used when attach to a graphs"""
 
-    input_schema: Union[InputT, StateT] = None
+    input_schema: SkipValidation[Union[InputT, StateT]] = None
     """Input state schema to the node"""
 
     edges: dict[str, tuple] = None
@@ -43,6 +76,7 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         "out_going" : ('name_node_3', 'name_node_4')
     }
     ```
+    This is only used to display directions. MUST be empty when invoking graphs
     """
 
     tool_schemas: list = []
@@ -51,11 +85,11 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     output_schema: Any = None
     """The structure output the chat model should return"""
 
-    model_name: str = None
+    model_name: str
     """Name of LLM (e.g. ``gpt-4o``, ``gpt-4o-mini``)"""
 
     model_provider: str = None
-    """Provide of used model (e.g. ``openai``, ``google``)"""
+    """Provide of used model (e.g. ``openai``, ``google``, ``openrouter``)"""
 
     model_api_key: str = None
     """API key"""
@@ -66,8 +100,11 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     chat_model: BaseChatModel = None
     """The chat model, useful when it's shared across multiple nodes/places"""
 
-    def __init_subclass__(cls, name: str = None, use_model: bool = True):
-        cls.name = name
+    template_file: str = None
+    """File of message templates"""
+
+    def __init_subclass__(cls, node_name: str = None, use_model: bool = True):
+        cls.name = node_name
         cls.use_model = use_model
 
     def __init__(
@@ -82,10 +119,10 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             model_api_key: str = None,
             output_schema_as_tool: bool = None,
             chat_model: BaseChatModel = None,
+            template_file: str = None,
             **kwargs,
     ):
         self.metadata = metadata
-
         self.chat_model = chat_model
         self.model_name = model_name
         self.model_provider = model_provider
@@ -93,33 +130,73 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
 
         self.edges = edges
         self.input_schema = fetch_schema(input_schema)
-        """Only input schema"""
         self.tool_schemas = tool_schemas
         self.output_schema = output_schema
         self.output_schema_as_tool = output_schema_as_tool
 
+        self.template_file = template_file
+        self.system_template: ChatMessagePromptTemplate
+        self.human_template: ChatMessagePromptTemplate
+        self.chat_template: ChatPromptTemplate
+
         if self.use_model:
-            self.validate_schema()
-            self.validate_model()
+            self._initialize_schema()
+            self._initialize_model()
 
-    def validate_model(self):
-        # Useful when using an identical chat model
-        if not self.chat_model:
-            assert self.model_name, "A model name must be provided (e.g. gpt-4o, gpt-4o-mini)"
-            self.chat_model = init_chat_model(
-                model=self.model_name,
-                model_provider=self.model_provider,
-                rate_limiter=InMemoryRateLimiter(requests_per_second=0.1, check_every_n_seconds=0.1, max_bucket_size=10)
+        self.opening_symbols = "-" * 60 + self.name + "-" * 60
+        self.ending_symbols = "*" * (120 + len(self.name))
 
+        self._prepare_message_templates()
+
+    @classmethod
+    def _check_model_name(cls, model_name: str):
+        if model_name not in cls.SUPPORTED_MODEL:
+            raise ValueError(f"We now only support model: {', '.join(cls.SUPPORTED_MODEL)}, not {model_name}")
+
+        return model_name
+
+    @classmethod
+    def _check_chat_model(cls, model: Any):
+        if model is not None:
+            raise ValueError(f"Now we only accept instantiate `chat_model` from 'model_name'")
+        return None
+
+    @classmethod
+    def _check_model_provider(cls, model_provider):
+        if model_provider not in cls.PROVIDER_TO_ENV:
+            logger.warning(
+                f"Now we only use models from provider: {', '.join(cls.PROVIDER_TO_ENV.keys())}, not {model_provider}"
+                f"Use 'openrouter', default")
+            return None
+        return model_provider
+
+    def _initialize_model(self):
+        """Use model from Openrouter"""
+
+        base_url = self.PROVIDER_TO_BASE_URL[self.model_provider]
+
+        if self.model_api_key is None:
+            api_key = os.getenv(self.PROVIDER_TO_ENV[self.model_provider])
+        else:
+            api_key = self.model_api_key
+
+        self.chat_model = init_chat_model(
+            model=self.model_name,
+            base_url=base_url,
+            api_key=api_key,
+            rate_limiter=InMemoryRateLimiter(
+                requests_per_second=0.1,
+                check_every_n_seconds=0.1,
+                max_bucket_size=10
             )
+        )
 
         self.chat_model = self.chat_model.bind_tools(self.tool_schemas)
 
     def validate_node(self):
         """Validate node settings"""
-        ...
 
-    def validate_schema(self):
+    def _initialize_schema(self):
         if self.tool_schemas and not isinstance(self.tool_schemas, list):
             self.tool_schemas = [self.tool_schemas, ]
         if self.output_schema and not isinstance(self.output_schema, list):
@@ -134,12 +211,31 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             for tool_schema in self.tool_schemas
         ]
 
+    def _prepare_message_templates(self, *args, **kwargs):
+        """Prepare ready prompt that would be passed to chat model"""
+        templates_dict = load_prompt_template_file(self.template_file)
+
+        self.system_template = SystemMessagePromptTemplate.from_template(
+            template=templates_dict.get('system_template', """"""),
+            template_format='f-string',
+        )
+        self.human_template = HumanMessagePromptTemplate.from_template(
+            template=templates_dict.get('human_template', """"""),
+            template_format='f-string',
+        )
+
+    def _prepare_chat_template(self):
+        self.chat_template = ChatPromptTemplate(
+            messages=[self.system_template, self.human_template],
+            template_format='f-string',
+        )
+
     def __call__(
             self,
             state: InputT | dict,
-            runtime: Optional[Runtime] = None,
-            context: Optional[Runtime] = None,
-            config: Optional[Runtime] = None,
+            runtime: RunnableConfig = None,
+            context: RunnableConfig = None,
+            config: RunnableConfig = None,
             **kwargs
     ):
         """The abstractive node function receives state input and returns update state
@@ -150,18 +246,71 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
                 State only takes the necessary keys declared in InputT from "state_schema" of the graph.
                 Default to None
             config (RunnableConfig, optional):
-                Config passed during operation.
-                Default to None
+                Config passed during operation. Default to None
             context (ContextT, optional):
-                Context variables from the program.
-                Default to None
+                Context variables from the program. Default to None
             runtime (Runtime, optional):
-                Values from runtime.
-                Default to None
-
+                Values from runtime. Default to None
         Returns:
-            Update state
+            dict: Update state
         """
-        # -------------------------------
         raise NotImplementedError
-        # -------------------------------
+
+    def anchor_call(self, *args, **kwargs):
+        """Use this function to generate virtual data that match output schema in reality.
+        The main purpose is just test workflow but not call chat model really
+        """
+        raise NotImplementedError
+
+    def chat_model_call(self, formatted_prompt: Any, *args, **kwargs):
+        """This method actually calls chat model and response follow ``output_schema``"""
+        ai_message = self.chat_model.invoke(formatted_prompt)
+        response = self._get_output(ai_message)
+
+        # tool_call = self._get_tool_call(ai_message)
+        ai_tool_message = self._create_ai_message_from_toll_call(content=response)
+        messages = [*formatted_prompt.to_messages(), ai_tool_message]
+
+        return response, messages
+
+    def _get_pretty_prep(self, content: str):
+        from json import dumps, loads
+        if isinstance(content, str):
+            return dumps(loads(content), indent=4)
+        return dumps(content, indent=4)
+
+    def _get_output(self, ai_message) -> str:
+        dict_output = ai_message.tool_calls[-1]['args']
+        key = list(dict_output.keys())[0]
+        return dict_output[key]
+
+    def _get_tool_call(self, ai_message):
+        tool_call = {}
+        if ai_message.tool_calls:
+            tool_call['input'] = ai_message.tool_calls[-1]['args']
+            tool_call['id'] = ai_message.tool_calls[-1]['id']
+
+        return tool_call
+
+    def _create_tool_message(self, content, id):
+        return ToolMessage(content=content, tool_call_id=id)
+
+    def _create_ai_message_from_toll_call(self, content):
+        return AIMessage(content=content)
+
+    @classmethod
+    def get_conversation(cls, messages):
+        conversation = ""
+        for m in messages:
+            conversation += m.pretty_repr(is_interactive_env())
+            conversation += '\n'
+
+        return conversation.strip()
+
+    @classmethod
+    def log_conversation(cls, _logger, conversation):
+        if isinstance(conversation, list):
+            conversation = cls.get_conversation(conversation)
+
+        _logger.info(f"💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 CONVERSATION 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬\n{conversation}")
+        _logger.info(f"💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬")
