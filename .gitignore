@@ -27,18 +27,20 @@ share/python-wheels/
 MANIFEST
 
 # Self-created folders
-models/
+models/dat
 tests/
-outputs/
 api_keys/
+outputs/2025**
 data/
 tests/
-assets/**/*.png
+assets/blender_script/**/*.py
+assets/rendered_images/**/*.png
 assets/**/*.py
 test_*.py
 tmp*.py
 .gradio/
-main.py
+app.py
+app_local.py
 # Self-created files
 
 
@@ -72,7 +74,6 @@ cover/
 *.pot
 
 # Django stuff:
-*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -131,7 +132,7 @@ activemq-data/
 *.sage.py
 
 # Environments
-.env
+*.env
 .envrc
 .venv
 env/

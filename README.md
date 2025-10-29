@@ -20,6 +20,8 @@ bash scripts/prepare_env_for_app.sh
 
 ## Usage
 
+1. Paste Openrouter api key to [.env](.env)
+2. Run program
 ```bash
 python main.py task=TASK
 ```
@@ -105,22 +107,21 @@ The latest script is saved in **anchor_coding.py** in [assets/blender_script](as
 |       ├── .
 |       ├── .
 |       └── camera_setting_n.yaml
-├── vectorstores
-|   └── faiss
-|       ├── index.faiss
-|       └── index.pkl
-└── data
-    ├── external
-    |   └── blender_document_html
-    |       ├── file_1.html
-    |       ├── ...
-    |       └── file_n.html
-    └── interm
-        └── blender_document_pdf
-            ├── file_1.pdf
-            ├── ...
-            └── file_n.pdf
+└── vectorstores
+    └── faiss
+        ├── index.faiss
+        └── index.pkl
+
 ```
+
+## Used data
+
+[Visit link](https://huggingface.co/datasets/nguyenminh4099/COMP-5112/tree/main/)
+
+- Data used to build vectorstore. **html**
+  in [external](https://huggingface.co/datasets/nguyenminh4099/COMP-5112/tree/main/data/external/blender_python_reference_4_5),
+  **pdf**
+  in [interm](https://huggingface.co/datasets/nguyenminh4099/COMP-5112/tree/main/data/interm/blender_python_reference_4_5)
 
 ## Files and folders
 
@@ -129,8 +130,6 @@ List of files/folders and purposes:
 - [assets/blender_script](assets/blender_script): save all generated scripts
 - [assets/rendered_images](assets/rendered_images): save all rendered images
 - [configs](configs): contains config files for all agents, graph, and logging
-- [data](data): data used to build vectorstore. **html** in [external](data/external/blender_python_reference_4_5), *
-  *pdf** in [interm](data/interm/blender_python_reference_4_5)
 - ``outputs/YYYY-MM-DD/hh-mm-ss/main.log``: save all logs
 - [prepare_env_for_local.sh](scripts/prepare_env_for_local.sh): prepare all needed things to run
 - [templates/prompt](templates/prompt): contain prompt templates of all agents
