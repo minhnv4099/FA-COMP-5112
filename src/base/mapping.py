@@ -50,3 +50,12 @@ def get_class(type: str, name: str):
         return MAPPING[type.lower()][name.lower()]
     except KeyError as e:
         return None
+
+
+def fetch_schema(schema):
+    if schema is None:
+        return None
+    try:
+        return get_class(type=schema['type'], name=schema['name'])
+    except KeyError:
+        return None

@@ -4,6 +4,7 @@
 #
 import logging
 from typing import Any, Literal, Union
+from typing_extensions import override
 
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -11,7 +12,6 @@ from langchain_core.runnables import RunnableLambda
 from langgraph.config import RunnableConfig
 from langgraph.runtime import Runtime
 from langgraph.types import Command, Send
-from typing_extensions import override
 
 from ..base.agent import AgentAsNode, register
 from ..base.utils import DirectionRouter
@@ -22,9 +22,7 @@ logger = logging.getLogger(__name__)
 
 @register(type="agent", name='retriever')
 class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
-    """
-    The Retriever Agent class
-    """
+    """The Retriever Agent class"""
 
     def __init__(
             self,
@@ -48,7 +46,7 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
             template_file=template_file,
             **kwargs,
         )
-        super()._prepare_chat_template()
+        self._prepare_chat_template()
 
         gpt4all_kwargs = {'allow_download': 'True'}
         self.embedding = GPT4AllEmbeddings(
@@ -71,9 +69,6 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
 
         self.chain = RunnableLambda(self._retrieve) | self.chat_template | self.chat_model
 
-    def validate_retrieving(self):
-        """Validate retrieving settings"""
-
     @override
     def __call__(
             self,
@@ -83,14 +78,12 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
             config: RunnableConfig = None,
             **kwargs
     ) -> Union[dict, Command[Literal['coding']], Send]:
-        start_message = "-" * 50 + self.name + "-" * 50
-        logger.info(start_message)
+        logger.info(self.opening_symbols)
         messages = []
         retrieved_docs: dict[int, list] = dict()
         for i, query in enumerate(state['queries']):
             # -------------------------------------------------
             docs = self.retrieving_engine.invoke(query)
-            docs_content = [doc.page_content for doc in docs]
             metadata_docs = [doc.metadata for doc in docs]
             logger.info(f"query {i + 1}/{len(state['queries'])}: {query}")
             logger.info(f"docs metadata: {metadata_docs}")
@@ -116,8 +109,7 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
         }
 
         self.log_conversation(logger, messages)
-        end_message = "*" * (100 + len(self.name))
-        logger.info(end_message)
+        logger.info(self.ending_symbols)
 
         # return update_state
         return DirectionRouter.goto(state=update_state, node='coding', method='command')
@@ -129,3 +121,8 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
             "query": query,
             "retrieved_docs": retrieved_docs
         }
+
+    # def _process_query(self, query: Union[str, dict, list]):
+    #     if isinstance(query, dict):
+    #         s = ''
+    #

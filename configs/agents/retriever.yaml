@@ -4,9 +4,11 @@ name: Retriever
 metadata:
   description: This node acts as a retriever agent, helps to retrieve relevant documents with given query from pre-defined vectorstore
 
-db_path: ${hydra:runtime.cwd}/vectorstores/faiss_full
+db_path: vectorstores/faiss/
 embedding_name: all-MiniLM-L6-v2.gguf2.f16.gguf
-n_docs: 2
+
+n_docs: 1
+
 template_file: templates/prompt/retriever.yaml
 
 input_schema:

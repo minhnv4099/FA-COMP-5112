@@ -10,7 +10,7 @@ from src.base.coordinator import Coordinator
 try:
     from dotenv import load_dotenv
 
-    load_dotenv('.env')
+    load_dotenv()
 except FileNotFoundError as e:
     pass
 
@@ -27,7 +27,7 @@ def main(cfg: DictConfig):
     graph = Coordinator.build_graph(
         nodes=(
             planner_agent, retriever_agent, coding_agent,
-            critic_agent, verification_agent, user_proxy_agent,),
+            critic_agent, verification_agent, user_proxy_agent),
         **cfg.graph
     )
     graph.init_graph()

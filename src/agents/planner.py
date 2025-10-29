@@ -4,11 +4,11 @@
 #
 import logging
 from typing import Any, Literal
+from typing_extensions import override
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
-from typing_extensions import override
 
 from ..base.agent import AgentAsNode, register
 from ..base.state import PlannerState
@@ -20,9 +20,7 @@ logger = logging.getLogger(__name__)
 
 @register(type="agent", name='planner')
 class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
-    """
-    The Planner Agent class
-    """
+    """The Planner Agent class"""
 
     @override
     def __init__(
@@ -55,7 +53,7 @@ class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
             template_file=template_file,
             **kwargs
         )
-        super()._prepare_chat_template()
+        self._prepare_chat_template()
         self.max_subtasks = max_subtasks
 
     @override
@@ -67,9 +65,8 @@ class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
             config: RunnableConfig = None,
             **kwargs
     ) -> Command[Literal['retriever']]:
-        start_message = "-" * 50 + self.name + "-" * 50
-        logger.info(start_message)
-        logger.info(f"Given TASK: {state['task']}, Max subtasks: {self.max_subtasks}")
+        logger.info(self.opening_symbols)
+        logger.info(f"TASK: {state['task']}, Max subtasks: {self.max_subtasks}")
         # -------------------------------------------------
         formatted_prompt = self.chat_template.invoke(
             input={
@@ -79,10 +76,10 @@ class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
 
         response, messages = self.chat_model_call(formatted_prompt)
         # -------------------------------------------------
-        # logger.info(f"{len(response)} subtasks: {response}")
+        logger.info(f"Number of delegated subtasks: {len(response)}")
+
         self.log_conversation(logger, messages)
-        end_message = "*" * (100 + len(self.name))
-        logger.info(end_message)
+        logger.info(self.ending_symbols)
 
         update_state = dict()
         update_state['coding_task'] = 'generate'

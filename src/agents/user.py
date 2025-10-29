@@ -3,24 +3,24 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import logging
+from typing_extensions import override
 
 from langgraph.config import RunnableConfig
+from langgraph.types import interrupt
 from langgraph.graph.state import END
-from typing_extensions import override
 
 from ..base.agent import AgentAsNode
 from ..base.mapping import register
 from ..base.utils import DirectionRouter
-from ..utils import InputT
+from ..utils.types import InputT
+from ..utils.exception import UserTerminated
 
 logger = logging.getLogger(__name__)
 
 
 @register(name='user', type='agent')
 class UserAgent(AgentAsNode, node_name="User", use_model=False):
-    """
-    The User Agent class
-    """
+    """The User Agent class"""
 
     @override
     def __call__(
@@ -31,21 +31,28 @@ class UserAgent(AgentAsNode, node_name="User", use_model=False):
             config: RunnableConfig = None,
             **kwargs
     ):
-        start_message = "-" * 50 + self.name + "-" * 50
-        logger.info(start_message)
+        logger.info(self.opening_symbols)
 
-        user_query = input('Enter a follow-up prompt (now only treat as a string): ')
+        logger.info('Waiting an additional prompt...')
+        additional_prompt = interrupt(value={'state': state, 'request': "Enter follow-up prompt"})
+        logger.info(f'Additional prompt: {additional_prompt}')
 
-        if user_query.lower() in ('q', 'quit'):
+        if additional_prompt in ('q', 'quit'):
             next_node = END
-            logger.info(f"GOOD BYE!!!")
+            logger.info(f"*************************************** GOOD BYE!!! ***************************************")
+            raise UserTerminated(state=state, msg="User terminated")
+
         else:
-            state['queries'] = [user_query]
-            state['user_additional_prompt'] = user_query
+            state['queries'] = [additional_prompt, ]
+            state['additional_prompt'] = additional_prompt
             state['caller'] = 'user'
+            state['coding_task'] = 'improve'
             next_node = 'coding'
 
-        end_message = "*" * (100 + len(self.name))
-        logger.info(end_message)
+        logger.info(self.ending_symbols)
 
         return DirectionRouter.goto(state=state, node=next_node, method='command')
+
+    @override
+    def _prepare_message_templates(self, *args, **kwargs):
+        ...

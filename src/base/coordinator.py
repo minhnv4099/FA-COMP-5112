@@ -18,7 +18,7 @@ class Coordinator:
 
     @classmethod
     def build_agent(cls, agent_config):
-        logger.info(f"Build {agent_config.name} Agent")
+        logger.info(f"Build {agent_config.name} Agent: {agent_config.model_name}")
         agent_cls = get_class(type='agent', name=agent_config.name)
         return agent_cls(**agent_config)
 

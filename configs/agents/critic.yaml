@@ -4,10 +4,12 @@ name: Critic
 metadata:
   description: This node acts as a critic agent, analyzes, points out flaws in given images and gives fixes
 
-save_rendered_dir: assets/rendered_images/critic/
+save_rendered_dir: assets/rendered_images/critic
+camera_setting_file: templates/camera/camera_setting.py
 anchor_script_path: assets/blender_script/anchor_critic.py
+
 validating_prompt: null
-max_critics: 3
+max_critics: 1
 
 input_schema:
   type: state

@@ -3,6 +3,7 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 from pydantic import BaseModel, Field
+from typing import Union, Literal
 from typing_extensions import Sequence
 
 from .mapping import register
@@ -51,27 +52,48 @@ class CriticFixPair(BaseOutput):
 
     critic: str = Field(description="A critic that exists in an image")
 
-    fix: str = Field(description="A fix (action, adjustment) that used by coding agent to "
-                                 "modify the script and fix the critic")
+    solution: str = Field(description="A solution (action, adjustment) that used by coding agent to "
+                                      "modify the script and fix the critic")
 
 
 @register(type='structured_output', name='critic')
 class CriticOutput(BaseOutput):
     """Output schema for the critic agent"""
 
-    critic_fix_list: Sequence[CriticFixPair] = Field(
-        description="List of (critic, fix) pairs in the given image")
+    critic_solution_list: Sequence[CriticFixPair] = Field(
+        description="List of (critic, solution) pairs in the given image")
+
+
+class ChangeSatisfiedSolution(BaseOutput):
+    """Always use this schema when user needs to verify the 'change'"""
+
+    # change: str = Field(description="An additional prompt provided by user. Always use the same value as input")
+
+    satisfied: Literal[True, False] = Field(
+        description="Indicator whether the change is applied appropriately, True or False")
+    # "If the critic was not solved, set 'PARTIAL' and with remaining critics")
+
+    remaining_critic: str = Field(
+        description="The remaining problem that need to be solved by 'solution'. It must be 'NONE' if satisfied is True")
+
+    solution: str = Field(
+        description="The solution that will be applied to fix the remaining problem. Set 'None' if satisfied = 'YES'"
+                    "DO NOT use the same value as 'solution' input.")
 
 
 class CriticSatisfiedSolution(BaseOutput):
-    """The schema used to response whether the solution/fix is applied to solve each item critic and fix"""
+    """Always use this schema when user need to verify 'critics and solutions'"""
 
-    critic: str = Field(description="A critic that exists in an image pointed out by the critic agent")
+    satisfied: Literal[True, False] = Field(
+        description="Verify whether the solution is applied appropriately, True or False")
+    # "If the critic was solved, set value this field True and solution filed 'None'.")
 
-    satisfied: str = Field(description="Whether the critic is solve appropriately. "
-                                       "Set value 'YES' if it solved, otherwise 'PARTIAL' along with detected critic.")
+    remaining_critic: str = Field(
+        description="The remaining critic/flaw/issuse that need to be solved by 'solution'. It must be 'NONE' if satisfied is True")
 
-    solution: str = Field(description="The solution that will be applied to solve existing critics.")
+    solution: str = Field(
+        description="The solution that will be applied to fix the remaining critic. Set 'None' if satisfied = True"
+                    "DO NOT use the same value as 'solution' input.")
 
 
 @register(type='structured_output', name='verification')
@@ -79,4 +101,7 @@ class VerificationOutput(BaseOutput):
     """Output schema for the verification agent"""
 
     css_list: Sequence[CriticSatisfiedSolution] = Field(
-        description="The list of tuples of (critic, satisfied, solution)")
+        description="The output schema must be either: "
+                    "list of dictionary if verify user needs to verify 'critic and solutions' "
+                    "OR "
+                    "a dictionary if if verify user needs to verify 'prompt'")

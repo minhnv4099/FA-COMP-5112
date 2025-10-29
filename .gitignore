@@ -32,6 +32,7 @@ tests/
 outputs/
 api_keys/
 data/
+tests/
 assets/**/*.png
 assets/**/*.py
 test_*.py

@@ -7,9 +7,9 @@ metadata:
 
 save_rendered_dir: assets/rendered_images/verification
 anchor_script_path: assets/blender_script/anchor_verification.py
-refined_script_path: assets/blender_script/refined_version.py
+camera_setting_file: ${agent.critic.camera_setting_file}
 
-verification_attempts: 2
+verification_attempts: 3
 
 input_schema:
   type: state

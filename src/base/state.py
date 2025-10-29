@@ -3,10 +3,10 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 from typing import Sequence, Literal, Union
+from typing_extensions import Annotated, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
-from typing_extensions import Annotated, TypedDict
 
 from .mapping import register
 
@@ -18,6 +18,7 @@ __all__ = [
     "CriticState",
     "VerificationState",
     "UserPromptUpState",
+    "SharedState"
 ]
 
 
@@ -44,7 +45,7 @@ class PlannerState(BaseState):
 class RetrieverState(BaseState):
     """The input state for Retriever Agent"""
 
-    queries: Annotated[Sequence[str], ...]
+    queries: Annotated[Sequence[Union[str, dict[str, str]]], ...]
     """List of queries this agent needs to retrieve relevant document for echo one."""
 
     coding_task: Annotated[Literal['fix', 'improve', 'generate'], ...]
@@ -62,9 +63,9 @@ class CodingState(BaseState):
     queries: Annotated[list[Union[str, dict]], ...]
     """List of queries
     The queries would be one of 3 types:
-        - subtask: subtasks provided by planner agent
-        - error: error when execute script
-        - improvements: provided by critic or verification agents
+        - subtask: list of subtasks (string)
+        - error: list of one error (str)
+        - critic/satisfied/solution: list of dicts
     """
 
     has_docs: Annotated[bool, ...]
@@ -92,19 +93,6 @@ class CodingState(BaseState):
 
     caller: Annotated[str, ...]
 
-    # error: Annotated[str, "The yielded command when executing the script"]
-    # """Errors that were produced when executing the script"""
-
-    # current_subtask: Annotated[str, ...]
-    # """Current subtask coding agent are working on"""
-    #
-    # code_snippet: Annotated[str, ...]
-    # """Retrieved documents associated with `current subtask`"""
-    #
-    # previous_scripts: Annotated[list[str], ...]
-    # """List of generated code of previous subtasks, helping model understand and be able to
-    # point out connecting points between scripts/subtasks"""
-
 
 @register(type='state', name='critic')
 class CriticState(BaseState):
@@ -130,8 +118,8 @@ class VerificationState(BaseState):
     rendered_images: Annotated[Sequence[str], ...]
     """Sequence of rendered image paths after criticising"""
 
-    critics_fixes: Annotated[dict[int, list[dict]], ...]
-    """Sequence of critics and fixes provided by the `critic agent`"""
+    critics_solutions: Annotated[dict[int, list[dict[str, str]]], ...]
+    """Sequence of critics, (maybe satisfied) and solution"""
 
     additional_prompt: Annotated[str, ...]
     """Additional prompt provided by user"""
@@ -144,12 +132,14 @@ class UserPromptUpState(BaseState):
     user_additional_prompt: Annotated[Sequence[str], ...]
     """Additional prompts provided by user"""
 
-    # current_script: Annotated[str, "The mose recent code"]
+    current_script: Annotated[str, "The mose recent code"]
     """The mose recent generated script after the first two phases in the process"""
 
+    rendered_images: Annotated[Sequence[str], ...]
+    """Sequence of rendered image paths after criticising"""
 
-# Share state
-@register(name='shared', type='state')
+
+@register(type='state', name='shared')
 class SharedState(
     PlannerState,
     RetrieverState,

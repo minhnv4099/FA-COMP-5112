@@ -7,8 +7,8 @@ metadata:
 
 script_folder: assets/blender_script/
 anchor_script_file: assets/blender_script/anchor_coding.py
-save_scripts: True
 check_error_file: assets/blender_script/check_error.py
+save_scripts: True
 fix_error_attempts: 10
 
 input_schema:
@@ -22,7 +22,6 @@ tool_schemas: [ ]
 edges:
   in_coming: [ ]
   out_going: [ ]
-
 
 template_file: templates/prompt/coding.yaml
 

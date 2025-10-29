@@ -7,16 +7,13 @@ metadata:
 input_schema:
   type: state
   name: user
-#output_schema:
-#  type: structured_output
-#  name: user
-#output_schema_as_tool: True
 
 tool_schemas: [ ]
 
 edges:
   in_coming: [ ]
-  out_going: [ ]
+  out_going:
+    - end
 
 use_model: False
 
