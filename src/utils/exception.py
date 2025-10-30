@@ -11,6 +11,9 @@ __all__ = [
     "ExceedFixErrorAttempts",
     "NotSupportUserRefinement",
     "NoConnectionEdges",
+    "UserTerminated",
+    "NotReturnStructuredOutput",
+    "ReinvokeChat"
 ]
 
 
@@ -29,7 +32,7 @@ class ScriptWithError(Exception):
 
 
 class BreakGraphOperation(Exception):
-    def __init__(self, msg, state):
+    def __init__(self, msg=None, state=None):
         self.state = state
         self.msg = msg
 
@@ -47,4 +50,12 @@ class NotSupportUserRefinement(BreakGraphOperation):
 
 
 class UserTerminated(BreakGraphOperation):
+    ...
+
+
+class ReinvokeChat(KeyError, ValueError):
+    ...
+
+
+class NotReturnStructuredOutput(ReinvokeChat):
     ...

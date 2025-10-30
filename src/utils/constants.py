@@ -9,10 +9,13 @@ SAVE_CRITIC_DIR = 'assets/rendered_images/critic/'
 SAVE_VERIFICATION_DIR = 'assets/rendered_images/verification/'
 """"""
 
-DEFAULT_CAMERA_SETTING_FILE = 'templates/camera/camera_setting.py'
+DEFAULT_CAMERA_TEMPLATE_FILE = 'templates/camera_templates/template.json'
 """"""
 
-DEFAULT_CAPTURE_IMAGE_FILE = 'templates/camera/capture_image.py'
+DEFAULT_CAMERA_SETTING_FILE = 'src/camera/prepare_cam_data.py'
+""""""
+
+DEFAULT_CAPTURE_IMAGE_FILE = 'src/camera/capture_image.py'
 """"""
 
 ANCHOR_FILE = 'assets/blender_script/anchor.py'
@@ -23,6 +26,7 @@ __all__ = [
     "SAVE_CRITIC_DIR",
     "SAVE_VERIFICATION_DIR",
     "DEFAULT_CAMERA_SETTING_FILE",
+    "DEFAULT_CAMERA_TEMPLATE_FILE",
     "DEFAULT_CAPTURE_IMAGE_FILE",
     "ANCHOR_FILE"
 ]
