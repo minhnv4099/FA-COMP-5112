@@ -6,13 +6,9 @@ import hydra
 from omegaconf import DictConfig
 
 from src.base.coordinator import Coordinator
+from src.utils import find_load_env
 
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except FileNotFoundError as e:
-    pass
+find_load_env()
 
 
 @hydra.main(config_path="configs", config_name="job", version_base=None)
