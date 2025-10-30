@@ -3,17 +3,16 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import logging
-from typing_extensions import override
 
 from langgraph.config import RunnableConfig
 from langgraph.types import interrupt
-from langgraph.graph.state import END
+from typing_extensions import override
 
 from ..base.agent import AgentAsNode
 from ..base.mapping import register
 from ..base.utils import DirectionRouter
-from ..utils.types import InputT
 from ..utils.exception import UserTerminated
+from ..utils.types import InputT, OutputT
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +29,24 @@ class UserAgent(AgentAsNode, node_name="User", use_model=False):
             context: RunnableConfig = None,
             config: RunnableConfig = None,
             **kwargs
-    ):
+    ) -> OutputT:
+        """"""
         logger.info(self.opening_symbols)
-
         logger.info('Waiting an additional prompt...')
-        additional_prompt = interrupt(value={'state': state, 'request': "Enter follow-up prompt"})
+        if 'verification' in state.get('msg', ""):
+            state['msg'] += " Waiting an additional prompt..."
+        else:
+            state['msg'] = "Waiting an additional prompt..."
+        # interrupt graph
+        additional_prompt = interrupt(value=state)
         logger.info(f'Additional prompt: {additional_prompt}')
 
+        # terminate the graph
         if additional_prompt in ('q', 'quit'):
-            next_node = END
             logger.info(f"*************************************** GOOD BYE!!! ***************************************")
-            raise UserTerminated(state=state, msg="User terminated")
+            state['msg'] = "User terminated"
+            state['additional_prompt'] = None
+            raise UserTerminated(state=state)
 
         else:
             state['queries'] = [additional_prompt, ]

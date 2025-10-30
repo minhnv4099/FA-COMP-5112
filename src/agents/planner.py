@@ -4,16 +4,16 @@
 #
 import logging
 from typing import Any, Literal
-from typing_extensions import override
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
+from typing_extensions import override
 
 from ..base.agent import AgentAsNode, register
 from ..base.state import PlannerState
 from ..base.utils import DirectionRouter
-from ..utils import InputT
+from ..utils.types import InputT, OutputT
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,8 @@ class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
             context: RunnableConfig = None,
             config: RunnableConfig = None,
             **kwargs
-    ) -> Command[Literal['retriever']]:
+    ) -> OutputT | Command[Literal['coding']]:
+        """"""
         logger.info(self.opening_symbols)
         logger.info(f"TASK: {state['task']}, Max subtasks: {self.max_subtasks}")
         # -------------------------------------------------
@@ -72,14 +73,13 @@ class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
             input={
                 'task': state['task'],
                 'max_subtasks': self.max_subtasks,
-            })
-
+            }
+        )
         response, messages = self.chat_model_call(formatted_prompt)
         # -------------------------------------------------
         logger.info(f"Number of delegated subtasks: {len(response)}")
 
-        self.log_conversation(logger, messages)
-        logger.info(self.ending_symbols)
+        self._finish_session(logger, messages)
 
         update_state = dict()
         update_state['coding_task'] = 'generate'

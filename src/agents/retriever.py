@@ -4,18 +4,17 @@
 #
 import logging
 from typing import Any, Literal, Union
-from typing_extensions import override
 
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_core.runnables import RunnableLambda
 from langgraph.config import RunnableConfig
 from langgraph.runtime import Runtime
-from langgraph.types import Command, Send
+from langgraph.types import Command
+from typing_extensions import override
 
 from ..base.agent import AgentAsNode, register
 from ..base.utils import DirectionRouter
-from ..utils import InputT
+from ..utils.types import InputT, OutputT
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +54,10 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
             client=None
         )
 
-        logger.info('Load vectorstore')
+        logger.info(f'Load vectorstore in "{db_path}"')
         self.db_path = db_path
         self.db = FAISS.load_local(
-            self.db_path,
+            folder_path=self.db_path,
             embeddings=self.embedding,
             allow_dangerous_deserialization=True,
         )
@@ -67,7 +66,7 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
             search_kwargs={'k': n_docs}
         )
 
-        self.chain = RunnableLambda(self._retrieve) | self.chat_template | self.chat_model
+        # self.chain = RunnableLambda(self._retrieve) | self.chat_template | self.chat_model
 
     @override
     def __call__(
@@ -77,26 +76,26 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
             context: Runtime[RunnableConfig] = None,
             config: RunnableConfig = None,
             **kwargs
-    ) -> Union[dict, Command[Literal['coding']], Send]:
+    ) -> Union[OutputT, Command[Literal['coding']], OutputT]:
+        """"""
         logger.info(self.opening_symbols)
-        messages = []
+
+        conversation = []
         retrieved_docs: dict[int, list] = dict()
+
         for i, query in enumerate(state['queries']):
-            # -------------------------------------------------
+            separator = '\n' if state['coding_task'] == 'fix' else ''
+            logger.info(f"query {i + 1}/{len(state['queries'])}: {separator}{query}")
             docs = self.retrieving_engine.invoke(query)
-            metadata_docs = [doc.metadata for doc in docs]
-            logger.info(f"query {i + 1}/{len(state['queries'])}: {query}")
-            logger.info(f"docs metadata: {metadata_docs}")
-
+            # -------------------------------------------------
             formatted_template = self.chat_template.invoke({'query': query, 'retrieved_docs': docs})
-
-            summary, query_messages = self.chat_model_call(formatted_template)
+            summary, _messages = self.chat_model_call(formatted_template)
             # -------------------------------------------------
             retrieved_docs[i] = summary
-            if messages:
-                messages.extend(query_messages[1:])
-            else:
-                messages.extend(query_messages)
+
+            conversation = self._extend_conversation(messages=_messages, his_conversation=conversation)
+
+        self._finish_session(logger, conversation)
 
         update_state = {
             'coding_task': state['coding_task'],
@@ -105,11 +104,8 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
             'caller': 'retriever',
             'is_sub_call': True,
             'has_docs': True,
-            "messages": messages
+            "messages": conversation
         }
-
-        self.log_conversation(logger, messages)
-        logger.info(self.ending_symbols)
 
         # return update_state
         return DirectionRouter.goto(state=update_state, node='coding', method='command')
@@ -121,8 +117,3 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
             "query": query,
             "retrieved_docs": retrieved_docs
         }
-
-    # def _process_query(self, query: Union[str, dict, list]):
-    #     if isinstance(query, dict):
-    #         s = ''
-    #

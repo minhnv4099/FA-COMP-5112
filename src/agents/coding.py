@@ -2,27 +2,29 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import os
 import logging
+import os
 from copy import deepcopy
 from typing import Union
-from typing_extensions import override, Any
 
 from langchain_core.language_models import BaseChatModel
-from langgraph.config import RunnableConfig
-from langgraph.types import Command, Send
 from langchain_core.prompts import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate
 )
+from langgraph.config import RunnableConfig
+from langgraph.graph.state import END
+from langgraph.types import Command, Send
+from typing_extensions import override, Any
 
 from ..base.agent import AgentAsNode
 from ..base.mapping import register
 from ..base.tool import execute_script, write_script
 from ..base.utils import DirectionRouter
-from ..utils import InputT, OutputT, load_prompt_template_file
 from ..utils.exception import ScriptWithError, ExceedFixErrorAttempts
+from ..utils.file import load_prompt_template_file
+from ..utils.types import InputT, OutputT
 
 logger = logging.getLogger(__name__)
 
@@ -89,14 +91,17 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
             context: RunnableConfig = None,
             config: RunnableConfig = None,
             **kwargs
-    ) -> Union[dict, Command, Send, None]:
+    ) -> Union[dict, Command, Send, OutputT]:
+        """"""
         logger.info(self.opening_symbols)
         logger.info(f"Number of messages: {len(state['messages'])}")
+
         # -------------------------------------------------------------------
         # This block is always executed only one time
         # store state from the official call (either to 'improve' or to 'generate')
         if not state['is_sub_call']:
-            logger.info(f"Copy state call from {state['caller']}")
+            logger.info(f"Copy state call from '{state['caller']}'")
+            logger.info(f'Number of queries: {len(state["queries"])}')
             self.copy_state = deepcopy(state)
             self.copy_state.pop('is_sub_call', None)
             self.copy_state.pop('has_docs', None)
@@ -104,16 +109,15 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
             self.copy_state['query_offset'] = 0
             self.copy_state['previous_scripts'] = []
             self.get_retrieved_docs = False
-            logger.info(f'Number of queries: {self.copy_state["num_queries"]}')
         else:
             # 'fix' error task only can be called as inner call from 'improve' or 'generate' tasks
             pass
 
         if not state['has_docs']:
-            logger.info("Call Retriever to retrieve docs")
-            return DirectionRouter.goto(state={
-                'coding_task': state['coding_task'],
-                'queries': state['queries']},
+            logger.info("Call Retriever to get relevant documents")
+            return DirectionRouter.goto(
+                state={'coding_task': state['coding_task'],
+                       'queries': state['queries']},
                 node='retriever', method='send'
             )
 
@@ -146,33 +150,37 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
             self.copy_state['messages'] = messages
 
         except ScriptWithError as e:
-            logger.info(' ⚠️️‼️ Catch error, retrieve document... ⚠️️‼️')
+            logger.info('‼️ ‼️ ‼️ ‼️ ‼️ ‼️ ⚠️ ⚠️ ⚠️ ⚠️ ⚠️️ Catch error. Call Retriever ⚠️ ⚠️ ⚠️ ⚠️ ⚠️️ ‼️‼️‼️‼️‼️‼️')
             self.fix_error_tries += 1
+
+            # Stop graph when over attempts fix error
             if self.fix_error_tries > self.fix_error_attempts:
                 logger.info(f"Number of tries to fix error exceed allowed attempts ({self.fix_error_attempts})")
-                raise ExceedFixErrorAttempts(
-                    f'Cannot fix error after {self.fix_error_attempts} due to model\'s power. Let do again',
-                    state=state,
-                )
+                state['msg'] = f'Cannot fix error after {self.fix_error_attempts}. Try again',
+                raise ExceedFixErrorAttempts(state=state)
+
             """Recall Coding Agent if catch command when executing script
             Before fix code, call Retriever Agent to get relevant documents
             `e.command` is a command call retriever with command and command script.
             """
             return e.command
 
+        # reset fix error tries after each query
         self.fix_error_tries = 0
+
         # continue with the next query and send it to coding
         if self.copy_state['query_offset'] < self.copy_state['num_queries']:
             # Continue with the next query
-            logger.info("✅✅✅✅✅⏭️⏭️⏭️⏭️⏭️ Continue with next query ✅✅✅✅✅⏭️⏭️⏭️⏭️⏭️")
+            logger.info("✅ ✅ ✅ ✅ ✅ ✅ ⏭️ ⏭️ ⏭️ ⏭️ ⏭️ ⏭️ Continue with next query ⏭️ ⏭️ ⏭️ ⏭️ ⏭️ ⏭️ ✅ ✅ ✅ ✅ ✅ ✅")
             next_node = 'coding'
         else:
-            logger.info("✅ ✅ ✅ ✅ ✅ ✅Finish a call, move to next node ✅ ✅ ✅ ✅ ✅ ✅")
             logger.info(f"Write the latest script to '{self.anchor_script_file}'")
+            # call a toll to write script
             write_script.invoke({
                 'script': self.copy_state['current_script'],
                 'file_path': self.anchor_script_file,
             })
+            # save all generated scripts
             if self.save_scripts:
                 self._save_all_scripts()
 
@@ -186,7 +194,11 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
             elif self.copy_state['caller'] == 'user':
                 next_node = 'verification'
             else:
-                return None
+                next_node = END
+
+            logger.info("✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ Finish a call, move to next node ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅")
+
+        logger.info(self._used_token_prep())
         logger.info(f'coding -> {next_node}')
         logger.info(self.ending_symbols)
 
@@ -194,20 +206,22 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
         # as there may be some sub calls from `retriever` that may change state.
         return DirectionRouter.goto(state=self.copy_state, node=next_node, method='command')
 
-    # def _prepare_prompt(self, state):
-    #     """Prepare prompt template base on task
-    #
-    #     Args:
-    #         state: state of the call
-    #     """
-    #     if state['coding_task'] == 'generate':
-    #         return self._prepare_generate_prompt(state)
-    #     elif state['coding_task'] == "improve":
-    #         assert 'current_script' in state
-    #         return self._prepare_improve_prompt(state)
-    #     else:
-    #         assert 'current_script' in state
-    #         return self._prepare_fix_prompt(state)
+    def _prepare_prompt(self, state):
+        """Prepare prompt template base on task
+
+        Args:
+            state: state of the call
+        """
+        if state['coding_task'] == 'generate':
+            formatted_prompt = self._prepare_generate_prompt(state)
+        elif state['coding_task'] == "improve":
+            assert 'current_script' in state
+            formatted_prompt = self._prepare_improve_prompt(state)
+        else:
+            assert 'current_script' in state
+            formatted_prompt = self._prepare_fix_prompt(state)
+
+        return formatted_prompt
 
     @override
     def _prepare_chat_template(self, human_template, *args, **kwargs):
@@ -242,8 +256,7 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
         docs = state['retrieved_docs'][self.copy_state['query_offset']]
 
         logger.info(
-            f"{state['coding_task']}: query {1 + self.copy_state['query_offset']}/{self.copy_state['num_queries']}")
-        logger.info(f"subtask: {query}")
+            f"{state['coding_task']}: query {1 + self.copy_state['query_offset']}/{self.copy_state['num_queries']}: {query}")
         logger.info(f"Number of previous scripts: {len(self.copy_state['previous_scripts'])}")
         # ---------------------------------------------------
         formatted_prompt = chat_template.invoke({
@@ -263,7 +276,7 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
         formatted_prompt = chat_template.invoke({
             'current_script': state['current_script'],
             'error': state['queries'],
-            'summary': state['retrieved_docs']
+            'summary': state['retrieved_docs'][0]
         })
         # ---------------------------------------------------
         return formatted_prompt
@@ -292,13 +305,15 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
             generated_script, messages = self.chat_model_call(formatted_prompt)
             # --------------------------------------------------------------------------
 
+            # call tool to write script
             write_script.invoke({
                 "script": generated_script,
                 "file_path": self.check_error_file
             })
 
+            # call tool to execute script
             error = execute_script.invoke({'script': self.check_error_file})
-            tool_message = self._create_tool_message(content=error, id='call_execute_script')
+            tool_message = self.create_tool_message(content=error, _id='call_execute_script')
             messages.append(tool_message)
 
             """Log conversation"""
