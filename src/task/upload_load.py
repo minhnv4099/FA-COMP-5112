@@ -48,23 +48,21 @@ def hf_upload_folder(
     if revision is None:
         revision = 'main'
 
-    hf.upload_large_folder(
+    hf.upload_folder(
         repo_id=repo_id,
         repo_type=repo_type,
         folder_path=folder,
-        # path_in_repo=remote_path,
+        path_in_repo=remote_path,
         revision=revision,
         ignore_patterns=[
-            'test_*.py', 'tmp.py', '.env',
-            'main.py', 'tests/', 'outputs/', 'models/', 'data/', '.gradio/'
+            'main.py', 'models/', 'data/', '.gradio/'
         ],
     )
 
 
 hf_upload_folder(
     repo_id='nguyenminh4099/COMP-5112',
-    repo_type='dataset',
+    repo_type='space',
     revision='main',
-    folder='data/',
-    remote_path='data/'
+    folder='.',
 )
