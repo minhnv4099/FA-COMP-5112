@@ -2,18 +2,18 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import os
 import logging
+import os
 from pathlib import Path
 from typing import Optional, Union
-from typing_extensions import Generic
 
 from langchain_core.runnables.graph import MermaidDrawMethod
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.config import RunnableConfig
 from langgraph.graph import START, END
 from langgraph.graph.state import StateGraph, CompiledStateGraph
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
+from typing_extensions import Generic
 
 from .agent import AgentAsNode
 from .mapping import register, fetch_schema
@@ -163,26 +163,28 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
         self.complied_graph = self.graph.compile(checkpointer=MemorySaver())
 
     def __call__(self, task, prompt, *args, **kwargs):
-        message = "Successful"
         try:
             if prompt:
                 logger.info('Operate prompt')
-                self.state = self._resume(prompt)
+                self.state = self._resume(input=prompt)
             else:
                 logger.info('Operate task')
-                self.state = self._invoke(task)
+                self.state = self._invoke(input=task)
         except BreakGraphOperation as e:
             self.state = e.state
-            message = e.msg
+
+        if "__interrupt__" in self.state:
+            self.state = self.state['__interrupt__'][0].value
 
         images = self.state.get('rendered_images', None)
         if not images:
             images = [None, None, None, None]
 
         result = [
-            message,
+            self.state['msg'],
             self.state.get('current_script', None),
-            AgentAsNode.get_conversation(self.state['messages']),
+            'Conversation'
+            # AgentAsNode.get_conversation(self.state['messages']),
         ]
         result.extend(images)
 
@@ -194,18 +196,11 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             context: Optional[ContextT] = None,
             config: Optional[RunnableConfig] = None,
     ):
-        if isinstance(inputs, str):
-            inputs = {'task': inputs}
-
+        inputs = self._convert_input(inputs)
         try:
-            self.state = self.complied_graph.invoke(
-                input=inputs,
-                config=self.config,
-                context=context,
-            )
+            self.state = self._invoke(inputs, context=context, config=config)
             while True:
                 additional_prompt = input("Enter additional prompt (e.g. change color to red): ")
-
                 self.state = self._resume(additional_prompt)
 
         except BreakGraphOperation as e:
@@ -219,20 +214,29 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             context: Optional[ContextT] = None,
             config: Optional[RunnableConfig] = None,
     ):
-        if isinstance(input, str):
-            input = {'task': input}
+        """The invoke function to call chat model
 
+        Args:
+            input (str, dict):
+            context:
+            config:
+        """
+        inputs = self._convert_input(input)
         self.state = self.complied_graph.invoke(
-            input=input,
+            input=inputs,
             config=self.config,
             context=context,
         )
 
-        # AgentAsNode.log_conversation(logger, state['messages'])
         return self.state
 
+    def _convert_input(self, inputs):
+        if isinstance(inputs, str):
+            inputs = {'task': inputs}
+        return inputs
+
     def _resume(self, input):
-        return self.complied_graph.invoke(Command(resume=input), config=self.config)
+        return self._invoke(Command(resume=input), config=self.config)
 
     def pretty_print_dict(self):
         for k, v in self.graph.__dict__.items():

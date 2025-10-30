@@ -2,13 +2,12 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import os
 import logging
-from typing import Union, Generic, Any, ClassVar
-from pydantic import ConfigDict, SkipValidation
+import os
+from typing import Union, Generic, Any, ClassVar, overload, Optional, Sequence
 
 from langchain.chat_models.base import BaseChatModel, init_chat_model
-from langchain_core.messages import ToolMessage, AIMessage
+from langchain_core.messages import ToolMessage, AIMessage, BaseMessage
 from langchain_core.prompts import (
     ChatPromptTemplate,
     ChatMessagePromptTemplate,
@@ -18,10 +17,12 @@ from langchain_core.prompts import (
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.utils.interactive_env import is_interactive_env
 from langgraph.config import RunnableConfig
+from pydantic import ConfigDict, SkipValidation
 
 from .mapping import register, fetch_schema
-from ..utils import StateT, InputT, OutputT, ContextT
-from ..utils import load_prompt_template_file
+from ..utils.exception import NotReturnStructuredOutput, ReinvokeChat
+from ..utils.file import load_prompt_template_file
+from ..utils.types import StateT, InputT, OutputT, ContextT
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,21 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     template_file: str = None
     """File of message templates"""
 
+    usage_metadata: dict = None
+    """Usage metadata"""
+
+    num_input_tokens: int = None
+    """Volume of input tokens passed to chat model"""
+
+    num_output_tokens: int = None
+    """Volume of output tokens chat model generated"""
+
+    invoke_attempts: int = 3
+    """Attempt to invoke chat mode"""
+
+    invoke_tries: int = 0
+    """Number of tries invoking"""
+
     def __init_subclass__(cls, node_name: str = None, use_model: bool = True):
         cls.name = node_name
         cls.use_model = use_model
@@ -147,6 +163,10 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         self.ending_symbols = "*" * (120 + len(self.name))
 
         self._prepare_message_templates()
+
+        self.response_metadata = dict()
+        self.num_input_tokens = 0
+        self.num_output_tokens = 0
 
     @classmethod
     def _check_model_name(cls, model_name: str):
@@ -224,9 +244,17 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             template_format='f-string',
         )
 
-    def _prepare_chat_template(self):
+    @overload
+    def _prepare_chat_template(self) -> None:
+        ...
+
+    @overload
+    def _prepare_chat_template(self, human_template) -> None:
+        ...
+
+    def _prepare_chat_template(self, human_template=None):
         self.chat_template = ChatPromptTemplate(
-            messages=[self.system_template, self.human_template],
+            messages=[self.system_template, human_template if human_template else self.human_template],
             template_format='f-string',
         )
 
@@ -265,24 +293,39 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     def chat_model_call(self, formatted_prompt: Any, *args, **kwargs):
         """This method actually calls chat model and response follow ``output_schema``"""
         ai_message = self.chat_model.invoke(formatted_prompt)
-        response = self._get_output(ai_message)
+        self._count_tokens(ai_message)
+        try:
+            response = self._parse_tool_call(ai_message)
+        except ReinvokeChat:
+            logger.info(ai_message)
+            self.invoke_tries += 1
+            if self.invoke_tries > self.invoke_attempts:
+                exit(432)
+            # Reinvoke when fail parse output
+            return self.chat_model_call(formatted_prompt)
 
-        # tool_call = self._get_tool_call(ai_message)
-        ai_tool_message = self._create_ai_message_from_toll_call(content=response)
+        ai_tool_message = self.create_ai_message(content=response)
         messages = [*formatted_prompt.to_messages(), ai_tool_message]
 
         return response, messages
 
-    def _get_pretty_prep(self, content: str):
-        from json import dumps, loads
-        if isinstance(content, str):
-            return dumps(loads(content), indent=4)
-        return dumps(content, indent=4)
+    def _parse_tool_call(self, ai_message: AIMessage) -> Any:
+        try:
+            dict_output = ai_message.tool_calls[-1]['args']
+            # expect structure has only one field
+            key = list(dict_output.keys())[0]
+        except (IndexError, ValueError, KeyError) as e:
+            raise NotReturnStructuredOutput()
 
-    def _get_output(self, ai_message) -> str:
-        dict_output = ai_message.tool_calls[-1]['args']
-        key = list(dict_output.keys())[0]
         return dict_output[key]
+
+    def _get_ai_message_metadata(self, ai_message: AIMessage):
+        ...
+
+    def _count_tokens(self, ai_message: AIMessage):
+        usage_metadata = ai_message.usage_metadata
+        self.num_input_tokens += usage_metadata['input_tokens']
+        self.num_output_tokens += usage_metadata['output_tokens']
 
     def _get_tool_call(self, ai_message):
         tool_call = {}
@@ -292,19 +335,28 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
 
         return tool_call
 
-    def _create_tool_message(self, content, id):
-        return ToolMessage(content=content, tool_call_id=id)
+    @classmethod
+    def get_pretty_prep(cls, content: str):
+        from json import dumps, loads
+        if isinstance(content, str):
+            return dumps(loads(content), indent=4)
+        return dumps(content, indent=4)
 
-    def _create_ai_message_from_toll_call(self, content):
+    @classmethod
+    def create_tool_message(cls, content, _id):
+        return ToolMessage(content=content, tool_call_id=_id)
+
+    @classmethod
+    def create_ai_message(cls, content):
         return AIMessage(content=content)
 
     @classmethod
     def get_conversation(cls, messages):
-        conversation = ""
+        conversation = "🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶\n"
         for m in messages:
             conversation += m.pretty_repr(is_interactive_env())
             conversation += '\n'
-
+        conversation += '🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 ' + '\n'
         return conversation.strip()
 
     @classmethod
@@ -312,5 +364,30 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         if isinstance(conversation, list):
             conversation = cls.get_conversation(conversation)
 
-        _logger.info(f"💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 CONVERSATION 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬\n{conversation}")
-        _logger.info(f"💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬")
+        _logger.info(
+            f"🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 CONVERSATION 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵\n{conversation}")
+        _logger.info(f"🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 ")
+
+    def _extend_conversation(
+            self,
+            messages: Sequence[BaseMessage],
+            his_conversation: Optional[Sequence[BaseMessage]]
+    ):
+        his_conversation = his_conversation or []
+        if his_conversation:
+            his_conversation.extend(messages[1:])
+        else:
+            his_conversation.extend(messages)
+
+        return his_conversation
+
+    def _used_token_prep(self):
+        return f'Input tokens: {self.num_input_tokens}, Output tokens: {self.num_output_tokens}'
+
+    def _print_used_tokens(self, _logger):
+        _logger.info(f'Input tokens: {self.num_input_tokens}, output tokens: {self.num_output_tokens}')
+
+    def _finish_session(self, _logger, conversation):
+        self.log_conversation(_logger, conversation)
+        _logger.info(self._used_token_prep())
+        _logger.info(self.ending_symbols)
