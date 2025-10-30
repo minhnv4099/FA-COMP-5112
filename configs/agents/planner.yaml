@@ -4,7 +4,7 @@ name: Planner
 metadata:
   description: This node acts as an planner agent, helps to break given task into smaller subtasks
 
-max_subtasks: 1
+max_subtasks: 5
 
 input_schema:
   type: state

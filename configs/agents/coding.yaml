@@ -9,7 +9,7 @@ script_folder: assets/blender_script/
 anchor_script_file: assets/blender_script/anchor_coding.py
 check_error_file: assets/blender_script/check_error.py
 save_scripts: True
-fix_error_attempts: 10
+fix_error_attempts: 15
 
 input_schema:
   type: state
