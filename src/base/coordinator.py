@@ -18,11 +18,11 @@ class Coordinator:
 
     @classmethod
     def build_agent(cls, agent_config):
-        logger.info(f"Build {agent_config.name} Agent: {agent_config.model_name}")
+        logger.info(f"Create {agent_config.name} agent: {agent_config.model_name}")
         agent_cls = get_class(type='agent', name=agent_config.name)
         return agent_cls(**agent_config)
 
     @classmethod
     def build_graph(cls, nodes, **graph_config):
-        logger.info(f"Build a graph")
+        logger.info(f"Build the graph")
         return BaseGraph(name='The entire graph', nodes=nodes, **graph_config)

@@ -45,7 +45,7 @@ def execute_script(
     process.wait()
 
     if len(result['error']) == 0:
-        result['error'] = "NO ERROR 👍 👍 👍"
+        result['error'] = "❇️ ❇️ ❇️ ❇️ ❇️ 👍 👍 👍 👍 👍 NO ERROR 👍 👍 👍 👍 👍 ❇️ ❇️ ❇️ ❇️ ❇️"
 
     return result['error']
 

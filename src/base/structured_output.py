@@ -2,8 +2,9 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+from typing import Literal
+
 from pydantic import BaseModel, Field
-from typing import Union, Literal
 from typing_extensions import Sequence
 
 from .mapping import register
@@ -73,7 +74,7 @@ class ChangeSatisfiedSolution(BaseOutput):
         description="Indicator whether the change is applied appropriately, True or False")
     # "If the critic was not solved, set 'PARTIAL' and with remaining critics")
 
-    remaining_critic: str = Field(
+    new_critic: str = Field(
         description="The remaining problem that need to be solved by 'solution'. It must be 'NONE' if satisfied is True")
 
     solution: str = Field(
@@ -88,8 +89,8 @@ class CriticSatisfiedSolution(BaseOutput):
         description="Verify whether the solution is applied appropriately, True or False")
     # "If the critic was solved, set value this field True and solution filed 'None'.")
 
-    remaining_critic: str = Field(
-        description="The remaining critic/flaw/issuse that need to be solved by 'solution'. It must be 'NONE' if satisfied is True")
+    new_critic: str = Field(
+        description="The new critic/flaw/issuse that need to be solved by 'solution'. It must be 'NONE' if satisfied is True")
 
     solution: str = Field(
         description="The solution that will be applied to fix the remaining critic. Set 'None' if satisfied = True"
