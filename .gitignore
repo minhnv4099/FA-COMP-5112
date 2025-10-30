@@ -27,21 +27,20 @@ share/python-wheels/
 MANIFEST
 
 # Self-created folders
+.DS_Store
 models/dat
 tests/
 api_keys/
 outputs/2025**
 data/
-tests/
 assets/blender_script/**/*.py
 assets/rendered_images/**/*.png
 assets/**/*.py
 test_*.py
 tmp*.py
 .gradio/
-app.py
-app_local.py
-
+#app.py
+#app_local.py
 notes.log
 # Self-created files
 

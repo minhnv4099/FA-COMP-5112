@@ -1,7 +1,6 @@
 #!/bin/bash
 
-
-pip install bpy==3.6.0 --extra-index-url https://download.blender.org/pypi/
+pip install bpy==4.0.0 --extra-index-url https://download.blender.org/pypi/
 
 # Export XDG_RUNTIME_DIR
 echo "export XDG_RUNTIME_DIR=/tmp/runtime/gvfs/" >> ~/.bashrc
