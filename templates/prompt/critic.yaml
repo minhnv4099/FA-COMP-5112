@@ -10,10 +10,9 @@ system_template: |-
 human_template:
   - type: text
     text: |-
-      Help me critique the scene in image with the prompt:
-        target prompt: {validating_prompt}
-        max critics: {max_critics}
+      Help me critique the scene in image.
+        - The validating prompt: {validating_prompt}
+        - Max critics: {max_critics}
   - type: image_url
     image_url:
-      url: "data:image/png;base64,{image}"
-      detail: high
+      "url": "data:image/png;base64,{image}"

@@ -1,48 +1,44 @@
 system_template: |-
-  You are a helpful assistant. You will compare 2 provided images produced by 2 different versions of Python script to complete the mission.
-  You mission is to verify whether: 
-    - the solutions are applied to solve critic on the original image.
-    - user-additional prompt are implemented correctly.
+  You are a helpful assistant. Compare given image contents to complete task.
+  You will be provided 2 different images and either:
+    - A list of dictionaries with key "critic" and "solution" provided by human: use it to check if the each "critic" on the first image was solved by applying associated "solution".
+      If is wasn't fixed, freely point out new critics on the second and suggest solutions the correct these new critics.
+    - A string of prompt (typically is action): check whether the second image was changed appropriately by apply the action. If not, list out the issues and suggest solution to improve it
 
 human_verify_critic_template:
   - type: text
-    text: Image from original script
-  - type: image_url
-    image_url:
-      url: "data:image/png;base64,{image}"
-      detail: high
-
-  - type: text
-    text: Image from modified script
-  - type: image_url
-    image_url:
-      url: "data:image/png;base64,{modified_image}"
-      detail: high
-
-  - type: text
     text: |-
-      Your mission is verify critics and solutions. 
-      Use the following list to make the answer: {critics_solutions}
+      Your mission is to verify critics and suggest solutions.
+      Use the following list and 2 given images to make the answer: 
+      {critics_solutions}
+
+  #  - type: text
+  #    text: The first image
+  - type: image_url
+    image_url:
+      "url": "data:image/png;base64,{image}"
+  #  - type: text
+  #    text: The second image
+  - type: image_url
+    image_url:
+      "url": "data:image/png;base64,{modified_image}"
 
 #  Keep the same critics. Indicate that whether every single critic was implemented correctly. If yes, response 'satisfied' as YES, if not, response 'satisfied' as 'PARTIAL, <remaining flaws>'
 #      If it was partially solved, suggest additional solution to fix the remaining critic.
 
 human_verify_prompt_template:
   - type: text
-    text: Image from original script
-  - type: image_url
-    image_url:
-      url: "data:image/png;base64,{image}"
-      detail: high
-
-  - type: text
-    text: Image from modified script
-  - type: image_url
-    image_url:
-      url: "data:image/png;base64,{modified_image}"
-      detail: high
-
-  - type: text
     text: |-
-      Your mission is verify additional prompt. Help me to verify if the following prompt is applied appropriately.
+      Your mission is verify additional prompt.
       Use the prompt: {additional_prompt}
+
+  #  - type: text
+  #    text: The first image
+  - type: image_url
+    image_url:
+      "url": "data:image/png;base64,{image}"
+  #  - type: text
+  #    text: The second image
+  - type: image_url
+    image_url:
+      "url": "data:image/png;base64,{modified_image}"

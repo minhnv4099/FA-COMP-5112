@@ -4,7 +4,7 @@ system_template: |-
   May include short code snippets, solution in the response if the query is error or solution.
 
 human_template: |-
-  Summarize data using below information:
-    - query: {query}.
+  Summarize the below information:
+    - Query: {query}
   
-    - retrieved docs: {retrieved_docs}.
+    - Retrieved docs: {retrieved_docs}
