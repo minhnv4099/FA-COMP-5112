@@ -13,7 +13,8 @@ __all__ = [
     "NoConnectionEdges",
     "UserTerminated",
     "NotReturnStructuredOutput",
-    "ReinvokeChat"
+    "ReinvokeChat",
+    "CanNotParseJsonString"
 ]
 
 
@@ -50,6 +51,10 @@ class NotSupportUserRefinement(BreakGraphOperation):
 
 
 class UserTerminated(BreakGraphOperation):
+    ...
+
+
+class CanNotParseJsonString(BreakGraphOperation):
     ...
 
 
