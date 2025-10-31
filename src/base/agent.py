@@ -386,7 +386,8 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         conversation += '🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 ' + '\n'
         return conversation.strip()
 
-    def is_list_of_strings(obj):
+    @classmethod
+    def is_list_of_strings(cls, obj):
         return isinstance(obj, list) and all(isinstance(elem, str) for elem in obj)
 
     @classmethod
