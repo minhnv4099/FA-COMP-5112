@@ -28,6 +28,7 @@ MANIFEST
 
 # Self-created folders
 .DS_Store
+renders/
 models/dat
 tests/
 api_keys/
@@ -41,6 +42,7 @@ tmp*.py
 .gradio/
 #app.py
 #app_local.py
+
 notes.log
 # Self-created files
 
