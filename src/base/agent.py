@@ -21,7 +21,12 @@ from langgraph.config import RunnableConfig
 from pydantic import ConfigDict, SkipValidation
 
 from .mapping import register, fetch_schema
-from ..utils.exception import NotReturnStructuredOutput, ReinvokeChat
+from ..utils.exception import (
+    NotReturnStructuredOutput,
+    CanNotParseJsonString,
+    BreakGraphOperation,
+    ReinvokeChat
+)
 from ..utils.file import load_prompt_template_file
 from ..utils.types import StateT, InputT, OutputT, ContextT
 
@@ -300,8 +305,12 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             try:
                 response = self._parse_tool_call(ai_message)
                 break
-            except ReinvokeChat:
+            except BreakGraphOperation as e:
                 # Reinvoke when fail parse output
+                logger.info(ai_message)
+                logger.critical("%s. Now we don't have any handler. Stop graph operation.", e.msg)
+                exit(432)
+            except ReinvokeChat as e:
                 logger.info(ai_message)
                 self.invoke_tries += 1
                 if self.invoke_tries > self.invoke_attempts:
@@ -317,10 +326,25 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             dict_output = ai_message.tool_calls[-1]['args']
             # expect structure has only one field
             key = list(dict_output.keys())[0]
-        except (IndexError, ValueError, KeyError) as e:
-            raise NotReturnStructuredOutput
+            return dict_output[key]
+        except (IndexError, ValueError, KeyError, NotReturnStructuredOutput):
+            try:
+                # try to parse when the content may be ```json\n{}\n```
+                return self._parse_json_string(ai_message.content)
+            except CanNotParseJsonString as e:
+                raise BreakGraphOperation(msg=e.msg)
 
-        return dict_output[key]
+    def _parse_json_string(self, text: str):
+        import json, re
+
+        text = text.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```[a-zA-Z]*", "", text).strip("` \n")
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+
+        raise CanNotParseJsonString(f"The '{self.name}' agent cannot return formatted schema".upper())
 
     def _get_ai_message_metadata(self, ai_message: AIMessage):
         ...
