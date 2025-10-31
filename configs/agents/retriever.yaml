@@ -25,7 +25,7 @@ edges:
 
 use_model: True
 
-model_name: gpt-4o-mini
+model_name: minimax/minimax-m2:free
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

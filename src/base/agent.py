@@ -304,9 +304,12 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
 
         return conversation.strip()
 
+    def is_list_of_strings(obj):
+        return isinstance(obj, list) and all(isinstance(elem, str) for elem in obj)
+
     @classmethod
     def log_conversation(cls, _logger, conversation):
-        if isinstance(conversation, list):
+        if not cls.is_list_of_strings(conversation) and isinstance(conversation, list):
             conversation = cls.get_conversation(conversation)
 
         _logger.info(f"💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 CONVERSATION 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬 💬\n{conversation}")

@@ -23,7 +23,7 @@ template_file: templates/prompt/planner.yaml
 
 use_model: True
 
-model_name: minimax/minimax-m2:free
+model_name: qwen/qwen3-coder
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

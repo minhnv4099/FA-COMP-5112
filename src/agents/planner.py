@@ -74,8 +74,10 @@ class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
                 'max_subtasks': self.max_subtasks,
             })
 
-        response, messages = self.chat_model_call(formatted_prompt)
+        # response, messages = self.chat_model_call(formatted_prompt)
         # -------------------------------------------------
+        response = [state['task']]
+        messages = [state['task']]
         logger.info(f"Number of delegated subtasks: {len(response)}")
 
         self.log_conversation(logger, messages)
