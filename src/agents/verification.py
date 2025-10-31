@@ -134,7 +134,8 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
             'critics_solutions': critics_solutions,
             # Used by User Agent to terminate and return final results
             'rendered_images': modified_rendered_images,
-            'messages': messages
+            'messages': messages,
+            'msg': state.get('msg', '')
         }
 
         return DirectionRouter.goto(state=update_state, node=next_node, method='command')

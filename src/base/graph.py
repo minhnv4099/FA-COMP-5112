@@ -15,7 +15,6 @@ from langgraph.graph.state import StateGraph, CompiledStateGraph
 from langgraph.types import Command
 from typing_extensions import Generic
 
-from .agent import AgentAsNode
 from .mapping import register, fetch_schema
 from ..utils import ASSETS_DIR
 from ..utils import BreakGraphOperation, NoConnectionEdges
@@ -205,8 +204,8 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
         except BreakGraphOperation as e:
             self.state = e.state
-            AgentAsNode.log_conversation(logger, e.state['messages'])
-            return e.state, e.msg
+            # AgentAsNode.log_conversation(logger, e.state['messages'])
+            return self.state.get('msg', None)
 
     def _invoke(
             self,

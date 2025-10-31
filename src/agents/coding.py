@@ -318,6 +318,7 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
 
             """Log conversation"""
             self.log_conversation(logger, messages)
+            logger.info(self._used_token_prep())
 
             # no error yielded
             if 'no error' in error.lower():
