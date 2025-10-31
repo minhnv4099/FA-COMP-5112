@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Union, Generic, Any, ClassVar, overload, Optional, Sequence
 
-from langchain.chat_models.base import BaseChatModel, init_chat_model
+from langchain.chat_models.base import BaseChatModel
 from langchain_core.messages import ToolMessage, AIMessage, BaseMessage
 from langchain_core.prompts import (
     ChatPromptTemplate,
@@ -16,6 +16,7 @@ from langchain_core.prompts import (
 )
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.utils.interactive_env import is_interactive_env
+from langchain_openai import ChatOpenAI
 from langgraph.config import RunnableConfig
 from pydantic import ConfigDict, SkipValidation
 
@@ -200,10 +201,11 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         else:
             api_key = self.model_api_key
 
-        self.chat_model = init_chat_model(
+        self.chat_model = ChatOpenAI(
+            openai_api_base=base_url,
             model=self.model_name,
-            base_url=base_url,
-            api_key=api_key,
+            openai_api_key=api_key,
+            temperature=0.7,
             rate_limiter=InMemoryRateLimiter(
                 requests_per_second=0.1,
                 check_every_n_seconds=0.1,
@@ -294,15 +296,16 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         """This method actually calls chat model and response follow ``output_schema``"""
         ai_message = self.chat_model.invoke(formatted_prompt)
         self._count_tokens(ai_message)
-        try:
-            response = self._parse_tool_call(ai_message)
-        except ReinvokeChat:
-            logger.info(ai_message)
-            self.invoke_tries += 1
-            if self.invoke_tries > self.invoke_attempts:
-                exit(432)
-            # Reinvoke when fail parse output
-            return self.chat_model_call(formatted_prompt)
+        while True:
+            try:
+                response = self._parse_tool_call(ai_message)
+                break
+            except ReinvokeChat:
+                # Reinvoke when fail parse output
+                logger.info(ai_message)
+                self.invoke_tries += 1
+                if self.invoke_tries > self.invoke_attempts:
+                    exit(432)
 
         ai_tool_message = self.create_ai_message(content=response)
         messages = [*formatted_prompt.to_messages(), ai_tool_message]
@@ -315,7 +318,7 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
             # expect structure has only one field
             key = list(dict_output.keys())[0]
         except (IndexError, ValueError, KeyError) as e:
-            raise NotReturnStructuredOutput()
+            raise NotReturnStructuredOutput
 
         return dict_output[key]
 
