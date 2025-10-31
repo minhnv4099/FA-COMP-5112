@@ -41,7 +41,7 @@ system_template: |-
       - Input: table data
       - Output: Formatted console string
       - Implementation hints: use `tabulate` or string formatting.
-  
+       
   All subtasks should be complete, logically ordered, and suitable for translation into Python code.
   Do not generate any code. Your role is strategic planning and detailed decomposition only.
 
