@@ -7,38 +7,35 @@ system_template: |-
 
 human_verify_critic_template:
   - type: text
+    text: The first image
+  - type: image_url
+    image_url:
+      "url": "data:image/png;base64,{image}"
+  - type: text
+    text: The second image
+  - type: image_url
+    image_url:
+      "url": "data:image/png;base64,{modified_image}"
+
+  - type: text
     text: |-
       Your mission is to verify critics and suggest solutions.
       Use the following list and 2 given images to make the answer: 
       {critics_solutions}
 
-  #  - type: text
-  #    text: The first image
+human_verify_prompt_template:
+  - type: text
+    text: The first image
   - type: image_url
     image_url:
       "url": "data:image/png;base64,{image}"
-  #  - type: text
-  #    text: The second image
+  - type: text
+    text: The second image
   - type: image_url
     image_url:
       "url": "data:image/png;base64,{modified_image}"
 
-#  Keep the same critics. Indicate that whether every single critic was implemented correctly. If yes, response 'satisfied' as YES, if not, response 'satisfied' as 'PARTIAL, <remaining flaws>'
-#      If it was partially solved, suggest additional solution to fix the remaining critic.
-
-human_verify_prompt_template:
   - type: text
     text: |-
       Your mission is verify additional prompt.
       Use the prompt: {additional_prompt}
-
-  #  - type: text
-  #    text: The first image
-  - type: image_url
-    image_url:
-      "url": "data:image/png;base64,{image}"
-  #  - type: text
-  #    text: The second image
-  - type: image_url
-    image_url:
-      "url": "data:image/png;base64,{modified_image}"
