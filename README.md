@@ -12,20 +12,14 @@ sdk_version: 5.49.1
 bash scripts/prepare_env_for_local.sh
 ```
 
-If error is raised, run
-
-```bash
-bash scripts/prepare_env_for_app.sh
-```
-
 ## Usage
 
 1. Paste Openrouter api key to [.env](.env)
-2. Run program
+
+### Run file
 ```bash
 python main.py task=TASK
 ```
-
 ``Task``: Must be in a pair of single/double quotation marks.
 
 Example:
@@ -34,7 +28,20 @@ Example:
 
 ```python main.py task=create a table``` ❌
 
+### Run app
+
+```bash
+python app_local.py
+```
+
+![user_interface.png](assets/images/user_interface.png)
+
+### Cloud platform
+
+Visit [Demo link](https://huggingface.co/spaces/nguyenminh4099/COMP-5112)
+
 ## Result
+
 
 The latest script is saved in **anchor_coding.py** in [assets/blender_script](assets/blender_script)
 
@@ -44,9 +51,13 @@ The latest script is saved in **anchor_coding.py** in [assets/blender_script](as
 ├── .gitignore
 ├── .env
 ├── requirements.txt
+├── pyproject.toml
+├── uv.lock
 ├── README.md
 ├── LISCENSE
 ├── main.py
+├── app.py
+├── app_local.py
 ├── assets
 |   ├── blender_script
 |   └── rendered_images
@@ -85,9 +96,10 @@ The latest script is saved in **anchor_coding.py** in [assets/blender_script](as
 |   |   ├── retriever.py
 |   |   ├── user.py
 |   |   └── verification.py
+|   ├── camera  
+|   |   └── ...
 |   ├── task  
-|   |   ├── convert_html_to_pdf.py
-|   |   └── prepare_db.py
+|   |   └── ...
 |   └── utils  
 |       ├── constants.py
 |       ├── exception.py
@@ -100,15 +112,13 @@ The latest script is saved in **anchor_coding.py** in [assets/blender_script](as
 |   |   ├── planner.yaml
 |   |   ├── retriever.yaml
 |   |   └── verification.yaml
-|   └── camera
-|       ├── camera_setting.py
-|       ├── camera_setting_1.yaml
-|       ├── .
-|       ├── .
-|       ├── .
-|       └── camera_setting_n.yaml
+|   └── camera_templates
+|       ├── template.json
+|       ├── template_1.json
+|       ├── ...
+|       └── template_n.json
 └── vectorstores
-    └── faiss
+    └── faiss_4_0
         ├── index.faiss
         └── index.pkl
 
@@ -133,7 +143,7 @@ List of files/folders and purposes:
 - ``outputs/YYYY-MM-DD/hh-mm-ss/main.log``: save all logs
 - [prepare_env_for_local.sh](scripts/prepare_env_for_local.sh): prepare all needed things to run
 - [templates/prompt](templates/prompt): contain prompt templates of all agents
-- [templates/camera](templates/camera): setting file cameras to capture image
+- [camera_templates](templates/camera_templates): setting file cameras to capture image
 - [vectorstores](vectorstores): save vector store
 - [.env](.env): contains API keys and other environment variables
 - [main.py](main.py): the running main
@@ -185,14 +195,12 @@ During the code is running, the logging messages will be printed continuously wi
 
 See file `outputs/YYYY-MM-DD/hh-mm-ss/main.log` to inspect, analyze reasoning and debug.
 
-## Config modification
+## Configuration
 
-- agent: visit [configs/agents](configs/agents)
-- prompt: visit [templates/prompt](templates/prompt)
-- camera: visit [templates/camera](templates/camera)
+- agent: visit [agents](configs/agents)
+- prompt: visit [templates/prompt](templates/prompt)[prompt](templates/prompt)
+- camera: visit [camera_templates](templates/camera_templates)
 
 ## Demo
 
 [Clink here](https://huggingface.co/spaces/nguyenminh4099/COMP-5112)
-
-## References

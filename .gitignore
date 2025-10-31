@@ -34,12 +34,14 @@ tests/
 api_keys/
 outputs/2025**
 data/
+.gradio/
+
+!.gitkeep
 assets/blender_script/**/*.py
 assets/rendered_images/**/*.png
 assets/**/*.py
 test_*.py
 tmp*.py
-.gradio/
 #app.py
 #app_local.py
 
