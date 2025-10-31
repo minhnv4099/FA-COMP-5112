@@ -11,9 +11,13 @@ system_template: |-
   - Scene Initialization
   - Remove default objects.
   - Ensure a clean scene.
+  - Create a ground plane to prevent floating.
   - Model Creation
   - Apply smooth shading.
   - The model should be centered at the origin.
+  - Use sculpting tools to adjust the details
+  - Pay attention to the scale and position of the model.
+  - All parts of the model should connect to the main body. When something is floating, think about how to fix it.
   
   Materials & Texturing:
   - Use Principled BSDF shader.
@@ -21,7 +25,7 @@ system_template: |-
   - Optionally allow extension for PBR textures (diffuse, roughness, normal maps).
   
   Lighting Setup
-  - Create a 3-point lighting system:
+  - Create a 3-point lighting system
   - Key light (main strong light).
   - Fill light (softer light to reduce shadows).
   - Back light / rim light (adds depth and separation).
@@ -30,67 +34,51 @@ system_template: |-
   - Optional: add HDRI environment lighting for realism.
   
   Camera Setup:
-  - Wide angle camera with 180 degree FOV.
-  - Adjustable position and rotation.
+  - Wide angle camera 
+  - Rotate around the model 5 times at every 72 degrees. 
   
   Code Organization, structure script into functions:
   - clean_scene()
   - create_model()
+  - create_ground_plane()
   - apply_material(obj)
   - setup_lighting()
   - setup_camera()
-  - render_views(obj, cam, output_dir, angles)
   - main() to orchestrate.
-  - must contains {{save_dir}} as a placeholder for the render_views output directory.
   
   Include docstrings for clarity.
   Support execution with if __name__ == "__main__":.
 
   Output Requirements:
   - The LLM must produce a ready-to-run Python script.
+  - Output characters as they are, without escaping or modifying them. 
   - The script should look polished by default (not just raw geometry).
-  -  Must be compatible with Blender Python API v4.
-  -  Must be extensible (easy to swap model, lights, materials).
-
-   Code Organization, structure script into functions:
-   - clean_scene()
-   - create_model()
-   - apply_material(obj)
-   - setup_lighting()
-   - setup_camera()
-   - render_views(obj, cam, output_dir, angles)
-   - main() to orchestrate.
-   - must contains {{save_dir}} as a placeholder for the render_views output directory.
-
-   Include docstrings for clarity.
-   Support execution with if __name__ == "__main__":.
-
-   Output Requirements:
-   - The LLM must produce a ready-to-run Python script.
-   - The script should look polished by default (not just raw geometry).
-   -  Must be compatible with Blender Python API v4.
-   -  Must be extensible (easy to swap model, lights, materials).
+  - Must be compatible with Blender Python API v4.
+  - Must be extensible (easy to swap model, lights, materials).
+  
+  Things you should not do:
+  - Do not use ShaderNodeTexWood
 
 human_generate_template: |-
   Help me to write Blender code using below information by using previous scripts, and summary of the subtask.
-  Always combine all parts from previous scripts in your response.
   Add two lines to the file after importing libraries if needed:
     ```<python block>
         bpy.ops.object.select_all(action='SELECT')
         bpy.ops.object.delete(use_global=False)
     ```
-  Use below information to make the response:
-    - Task: {subtask}
+  MUST combine appropriate parts from them in to the new generated script.
+  Use below information:
+    - Subtask: {subtask}
   
-    - How to do: {summary}
+    - Summary: {summary}
   
     - Previous scripts: 
   {previous_scripts}
 
 human_fix_template: |-
-  Fix the error based on the current script and suggested ways to fix it. Return revised code. 
-  Always include non-error parts of the current script in you response.
-  Use below information to make the response:
+  Fix the error based on the current script and summary of solution to fix it. Return refined version of code.
+  Note: DO NOT remove current script.
+  Use below information:
     - Current script: 
   ```python
   {current_script}
@@ -99,11 +87,12 @@ human_fix_template: |-
     - Error: 
   {error}
   
-    - How to fix: {summary} 
+    - Summary: {summary} 
 
 human_improve_template: |-
-  Modify the current script. Always include non-error parts of the current script in you response.
-  Use below information to make the response:
+  Refine the current script after applying solution based on docs, and return refined version of code
+  DO NOT remove current script.
+  Use below information:
     - Current script: 
   ```python
   {current_script}
@@ -111,4 +100,4 @@ human_improve_template: |-
   
     - Solution: {solution}
   
-    - How to modify: {summary}
+    - Docs: {summary}

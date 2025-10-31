@@ -4,11 +4,11 @@
 #
 import logging
 from typing import Any, Literal
+from typing_extensions import override
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
-from typing_extensions import override
 
 from ..base.agent import AgentAsNode, register
 from ..base.state import PlannerState
@@ -73,10 +73,12 @@ class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
             input={
                 'task': state['task'],
                 'max_subtasks': self.max_subtasks,
-            }
-        )
-        response, messages = self.chat_model_call(formatted_prompt)
+            })
+
+        # response, messages = self.chat_model_call(formatted_prompt)
         # -------------------------------------------------
+        response = [state['task']]
+        messages = [state['task']]
         logger.info(f"Number of delegated subtasks: {len(response)}")
 
         self._finish_session(logger, messages)
