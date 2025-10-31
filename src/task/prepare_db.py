@@ -4,11 +4,12 @@
 #
 import glob
 import logging
+from typing import Any
 
 import faiss
 import tqdm
 from langchain_community.docstore import InMemoryDocstore
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader, PythonLoader
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -16,25 +17,35 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-data_dir = 'data/interm/blender_python_reference_4_5/'
-raw = 'data/raw'
-db_save_dir = 'vectorstores/faiss_full'
+
+def load_embedding_model(model_name: str = "all-MiniLM-L6-v2.gguf2.f16.gguf"):
+    gpt4all_kwargs = {'allow_download': 'True'}
+    embeddings = GPT4AllEmbeddings(
+        model_name=model_name,
+        gpt4all_kwargs=gpt4all_kwargs,
+    )
+
+    return embeddings
 
 
-def build_vectorstore():
-    # dir_loader = PyPDFDirectoryLoader(
-    #     path=data_dir,
-    #     # glob=r"**/*.pdf",
-    #     recursive=False,
-    #     silent_errors=False,
-    #     password=None,
-    #     extract_images=False,
-    #     load_hidden=False,
-    # )
-    #
-    # logger.info("Load directory pdfs")
-    # docs = dir_loader.load()
+def load_vector_store(db_dir, embedding: str | Any = None):
+    if embedding is None:
+        embedding = load_embedding_model()
+    elif isinstance(embedding, str):
+        embedding = load_embedding_model(embedding)
+    else:
+        pass
 
+    db = FAISS.load_local(
+        folder_path=db_dir,
+        embeddings=embedding,
+        allow_dangerous_deserialization=True
+    )
+
+    return db
+
+
+def build_vectorstore(data_dir, db_dir):
     logger.info("Initialize embedding model")
     embedding_model = GPT4AllEmbeddings()
     embed_dim = len(embedding_model.embed_query('hello'))
@@ -69,5 +80,20 @@ def build_vectorstore():
         chunks = text_splitter.split_documents(batch_docs)
         vector_store.add_documents(chunks)
 
-    logger.info(f"Save vectorstore to {db_save_dir}")
-    vector_store.save_local(folder_path=db_save_dir)
+    logger.info(f"Save vectorstore to {db_dir}")
+    vector_store.save_local(folder_path=db_dir)
+
+
+def extend_vectorstore_py_file(db_dir, file):
+    logger.info(f"Load vectorstore from '{db_dir}'")
+    vector_store = load_vector_store(db_dir=db_dir)
+
+    logger.info(f"Load Python file: '{file}'")
+    loader = PythonLoader(file_path=file)
+    doc = loader.lazy_load()
+
+    logger.info("Add python document to vector store")
+    vector_store.add_documents(documents=list(doc))
+
+    logger.info(f"Save vectorstore to {db_dir}")
+    vector_store.save_local(folder_path=db_dir)
