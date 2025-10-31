@@ -8,6 +8,7 @@ from typing import Union, Generic, Any, ClassVar
 from pydantic import ConfigDict, SkipValidation
 
 from langchain.chat_models.base import BaseChatModel, init_chat_model
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import ToolMessage, AIMessage
 from langchain_core.prompts import (
     ChatPromptTemplate,
@@ -180,15 +181,11 @@ class AgentAsNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
         else:
             api_key = self.model_api_key
 
-        self.chat_model = init_chat_model(
+        self.chat_model = ChatOpenAI(
+            openai_api_base=base_url,
             model=self.model_name,
-            base_url=base_url,
-            api_key=api_key,
-            rate_limiter=InMemoryRateLimiter(
-                requests_per_second=0.1,
-                check_every_n_seconds=0.1,
-                max_bucket_size=10
-            )
+            openai_api_key=api_key,
+            temperature=0.7,
         )
 
         self.chat_model = self.chat_model.bind_tools(self.tool_schemas)

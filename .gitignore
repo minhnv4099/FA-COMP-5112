@@ -181,4 +181,4 @@ __marimo__/
 .streamlit/secrets.toml
 
 .env
-!sample.env
+!sample_secret.env
