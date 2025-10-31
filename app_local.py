@@ -21,7 +21,6 @@ SYSTEM: Any
 JOB_CONFIG: DictConfig
 CONFIG_PATH = 'configs'
 CONFIG_NAME = 'job'
-NUM_IMAGES = 4
 
 progress = gr.Progress(track_tqdm=True)
 
@@ -78,14 +77,15 @@ def terminate():
     return execute(input_text, "quit")
 
 
-def restart(model_selection):
-    if model_selection is None or model_selection == JOB_CONFIG.agent.coding.model_name:
-        message = "No any change, keep the same graph"
-    else:
-        global SYSTEM
-        message = f"Restart system with new model of Coding Agent: '{JOB_CONFIG.agent.coding.model_name}' -> '{model_selection}'"
-        JOB_CONFIG.agent.coding.model_name = model_selection
+def restart():
+    global SYSTEM, JOB_CONFIG
+    old_config = JOB_CONFIG
+    get_cfg()
+    if old_config != JOB_CONFIG:
+        message = f"Restart system with new config"
         SYSTEM = build_system(JOB_CONFIG)
+    else:
+        message = f"It seems not to change anything"
 
     return message
 
@@ -141,36 +141,39 @@ if __name__ == '__main__':
         # This block modifies system configs
         with gr.Blocks() as config_modifier:
             coding_model_selector = gr.Dropdown(
-                choices=["gpt-4o", "gpt-4o-mini"],
-                value="gpt-4o-mini",
+                choices=[
+                    "qwen/qwen3-coder:free",
+                ],
+                value="qwen/qwen3-coder:free",
                 label="Model for Coding Agent",
                 show_label=True,
                 interactive=True,
+                visible=False
             )
 
             coding_model_selector.change(change_model, inputs=coding_model_selector, outputs=coding_model_selector)
 
-        compt_to_disable = [input_text, additional_prompt, submit_button, terminate_button, restart_button,
-                            coding_model_selector]
+        interactive_compts = [input_text, additional_prompt, submit_button, terminate_button, restart_button,
+                              coding_model_selector]
 
         submit_button.click(
             fn=disable_interactive_comp,
-            inputs=compt_to_disable,
-            outputs=compt_to_disable
+            inputs=interactive_compts,
+            outputs=interactive_compts
         ).then(
             fn=execute,
             inputs=[input_text, additional_prompt],
             outputs=[status_text, script_output, conversation_area, *image_areas[:n_images]]
         ).then(
             fn=enable_interactive_comp,
-            inputs=compt_to_disable,
-            outputs=compt_to_disable
+            inputs=interactive_compts,
+            outputs=interactive_compts
         )
 
         terminate_button.click(fn=terminate, inputs=[],
                                outputs=[input_text, additional_prompt])
 
-        restart_button.click(fn=restart, inputs=[coding_model_selector],
+        restart_button.click(fn=restart, inputs=[],
                              outputs=[status_text])
 
     demo.queue(max_size=100).launch(share=True, show_api=True)
