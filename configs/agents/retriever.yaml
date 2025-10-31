@@ -7,7 +7,7 @@ metadata:
 db_path: vectorstores/faiss_4.0/
 embedding_name: all-MiniLM-L6-v2.gguf2.f16.gguf
 
-n_docs: 1
+n_docs: 2
 
 template_file: templates/prompt/retriever.yaml
 
@@ -25,7 +25,7 @@ edges:
 
 use_model: True
 
-model_name: gpt-4o-mini
+model_name: minimax/minimax-m2:free
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

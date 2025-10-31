@@ -10,8 +10,8 @@ camera_template_file: templates/camera_templates/template.json
 camera_setting_file: src/camera/prepare_cam_data.py
 
 validating_prompt: null
-max_critics: 3
-n_rendered_images: 4
+max_critics: 2
+n_rendered_images: 2
 
 input_schema:
   type: state
@@ -29,7 +29,7 @@ template_file: templates/prompt/critic.yaml
 
 use_model: True
 
-model_name: gpt-4o-mini
+model_name: nvidia/nemotron-nano-12b-v2-vl:free
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

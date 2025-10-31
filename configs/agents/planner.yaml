@@ -4,7 +4,7 @@ name: Planner
 metadata:
   description: This node acts as an planner agent, helps to break given task into smaller subtasks
 
-max_subtasks: 5
+max_subtasks: 1
 
 input_schema:
   type: state
@@ -23,7 +23,7 @@ template_file: templates/prompt/planner.yaml
 
 use_model: True
 
-model_name: gpt-4o-mini
+model_name: minimax/minimax-m2:free
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True
