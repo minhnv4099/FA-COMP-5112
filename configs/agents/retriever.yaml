@@ -7,7 +7,7 @@ metadata:
 db_path: vectorstores/faiss_4.0/
 embedding_name: all-MiniLM-L6-v2.gguf2.f16.gguf
 
-n_docs: 2
+n_docs: 1
 
 template_file: templates/prompt/retriever.yaml
 

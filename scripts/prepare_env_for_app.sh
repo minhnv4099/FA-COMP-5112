@@ -1,5 +1,7 @@
 #!/bin/bash
 
+pip install -r requirements.txt
+
 pip install bpy==4.0.0 --extra-index-url https://download.blender.org/pypi/
 
 # Export XDG_RUNTIME_DIR
