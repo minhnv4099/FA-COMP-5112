@@ -10,13 +10,13 @@ anchor_script_path: assets/blender_script/anchor_verification.py
 camera_template_file: ${agent.critic.camera_template_file}
 camera_setting_file: ${agent.critic.camera_setting_file}
 
-verification_attempts: 3
+verification_attempts: 1
 
 input_schema:
   type: state
   name: verification
 output_schema:
-  type: structured_output
+  type: chat_output
   name: verification
 tool_schemas: [ ]
 
@@ -28,7 +28,7 @@ template_file: templates/prompt/verification.yaml
 
 use_model: True
 
-model_name: gpt-4o-mini
+model_name: ${agent.critic.model_name}
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

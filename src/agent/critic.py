@@ -8,46 +8,39 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from langchain_core.language_models import BaseChatModel
 from langgraph.config import RunnableConfig
 from typing_extensions import override
 
-from ..base.agent import AgentAsNode, register
-from ..base.utils import DirectionRouter
-from ..utils.constants import (
+from src.base.node import AgentAsNode
+from src.base.utils import DirectionRouter
+from src.registry import RegisterNode, RegisterAgent
+from src.types import InputT, OutputT
+from src.utils.constants import (
     DEFAULT_CAMERA_SETTING_FILE,
     DEFAULT_CAPTURE_IMAGE_FILE,
     SAVE_CRITIC_DIR,
     DEFAULT_CAMERA_TEMPLATE_FILE
 )
-from ..utils.exception import NoRenderImages
-from ..utils.file import load_image_content
-from ..utils.file import write_script, execute_file
-from ..utils.types import InputT, OutputT
+from src.utils.decorator import add_note_docstring
+from src.utils.exception import NoRenderImages
+from src.utils.file import load_image_content
+from src.utils.file import write_script, execute_file
 
 logger = logging.getLogger(__name__)
 
 
-@register(type="agent", name='critic')
+@add_note_docstring(docs="Used for only 'COMP-5112' project")
+@RegisterAgent(module_path=__name__, name='critic')
+@RegisterNode(module_path=__name__, name='critic')
 class CriticAgent(AgentAsNode, node_name='Critic'):
     """The Critic Agent class"""
 
     def __init__(
             self,
-            metadata: dict = None,
-            input_schema: InputT | dict = None,
-            edges: dict[str, tuple[str]] = None,
-            tool_schemas: list | list[dict] = None,
-            output_schema: OutputT | list[OutputT] | list[dict] = None,
-            model_name: str = None,
-            model_provider: str = None,
-            model_api_key: str = None,
-            output_schema_as_tool: bool = None,
-            chat_model: BaseChatModel = None,
+            *args,
             save_rendered_dir: str = None,
             anchor_script_path: str = None,
             validating_prompt: str = None,
-            template_file: str = None,
             camera_template_file: str = None,
             camera_setting_file: str = None,
             capture_image_file: str = None,
@@ -55,20 +48,8 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
             n_rendered_images: Optional[int] = None,
             **kwargs
     ):
-        super().__init__(
-            metadata=metadata,
-            input_schema=input_schema,
-            edges=edges,
-            tool_schemas=tool_schemas,
-            output_schema=output_schema,
-            model_name=model_name,
-            model_provider=model_provider,
-            model_api_key=model_api_key,
-            output_schema_as_tool=output_schema_as_tool,
-            chat_model=chat_model,
-            template_file=template_file,
-            **kwargs
-        )
+        super().__init__(*args, **kwargs)
+
         self._prepare_chat_template()
         self.validating_prompt = validating_prompt
         self.combined_script_template = "{creation}\n\n{camera_setting}\n\n{capture}"
@@ -78,10 +59,10 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
         self.camera_setting_file = camera_setting_file if camera_setting_file else DEFAULT_CAMERA_SETTING_FILE
         self.capture_image_file = capture_image_file if capture_image_file else DEFAULT_CAPTURE_IMAGE_FILE
         self.save_rendered_dir = save_rendered_dir if save_rendered_dir else SAVE_CRITIC_DIR
+        self._make_dirs()
 
         self.max_critics = max_critics
         self.n_rendered_images = n_rendered_images
-        self._make_dirs()
 
     @override
     def __call__(
@@ -113,12 +94,16 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
         solutions = []
         for i, image in enumerate(rendered_image_paths):
             # -----------------------------------------------
-            formatted_prompt = self.chat_template.invoke({
-                'image': load_image_content(image),
-                'validating_prompt': validating_prompt,
-                'max_critics': self.max_critics,
-            })
+            formatted_prompt = self._get_pretty_formatted_prompt(
+                chat_prompt_template=self.chat_template,
+                input={
+                    'image': load_image_content(image),
+                    'validating_prompt': validating_prompt,
+                    'max_critics': self.max_critics,
+                }
+            )
             response, _messages = self.chat_model_call(formatted_prompt)
+            # self.log_conversation(logger, _messages)
             # -----------------------------------------------
             critics_solutions_dict[i] = response
             solutions.extend([d['solution'] for d in response])

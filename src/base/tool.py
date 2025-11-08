@@ -2,7 +2,7 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import os.path
+import os
 import subprocess
 from typing import Any, Optional
 

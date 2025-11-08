@@ -2,12 +2,12 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from .coding import CodingAgent
-from .critic import CriticAgent
-from .planner import PlannerAgent
-from .retriever import RetrieverAgent
-from .user import UserAgent
-from .verification import VerificationAgent
+from src.agent.coding import CodingAgent
+from src.agent.critic import CriticAgent
+from src.agent.planner import PlannerAgent
+from src.agent.retriever import RetrieverAgent
+from src.agent.user import UserAgent
+from src.agent.verification import VerificationAgent
 
 __module_lookup = {
     "planner": "PlannerAgent",

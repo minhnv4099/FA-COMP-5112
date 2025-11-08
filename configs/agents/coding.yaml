@@ -15,7 +15,7 @@ input_schema:
   type: state
   name: coding
 output_schema:
-  type: structured_output
+  type: chat_output
   name: coding
 tool_schemas: [ ]
 
@@ -27,7 +27,7 @@ template_file: templates/prompt/coding.yaml
 
 use_model: True
 
-model_name: minimax/minimax-m2
+model_name: minimax/minimax-m2:free
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

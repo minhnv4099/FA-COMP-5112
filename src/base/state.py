@@ -3,12 +3,12 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 from typing import Sequence, Literal, Union
-from typing_extensions import Annotated, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
+from typing_extensions import Annotated, TypedDict
 
-from .mapping import register
+from src.registry import RegisterState
 
 __all__ = [
     "BaseState",
@@ -20,6 +20,8 @@ __all__ = [
     "UserPromptUpState",
     "SharedState"
 ]
+
+module_path = __name__
 
 
 class BaseState(TypedDict):
@@ -33,7 +35,7 @@ class BaseState(TypedDict):
 
 
 # Agent/Node input states
-@register(type='state', name='planner')
+@RegisterState(module_path=module_path, name='planner')
 class PlannerState(BaseState):
     """The input state for Planner Agent"""
 
@@ -41,7 +43,7 @@ class PlannerState(BaseState):
     """Given task provided by user prompt"""
 
 
-@register(type='state', name='retriever')
+@RegisterState(module_path=module_path, name='retriever')
 class RetrieverState(BaseState):
     """The input state for Retriever Agent"""
 
@@ -52,7 +54,7 @@ class RetrieverState(BaseState):
     """Current task for Coding Agent: *generate script*, *fix error* and *apply improvements*"""
 
 
-@register(type='state', name='coding')
+@RegisterState(module_path=module_path, name='coding')
 class CodingState(BaseState):
     """The input state for Coding Agent
     The Coding Agent has 2 main responsibilities:
@@ -94,7 +96,7 @@ class CodingState(BaseState):
     caller: Annotated[str, ...]
 
 
-@register(type='state', name='critic')
+@RegisterState(module_path=module_path, name='critic')
 class CriticState(BaseState):
     """The input state for Critic Agent"""
 
@@ -108,7 +110,7 @@ class CriticState(BaseState):
     """The original task given by user"""
 
 
-@register(type='state', name='verification')
+@RegisterState(module_path=module_path, name='verification')
 class VerificationState(BaseState):
     """The input state for Verification Agent"""
 
@@ -125,7 +127,7 @@ class VerificationState(BaseState):
     """Additional prompt provided by user"""
 
 
-@register(type='state', name='user')
+@RegisterState(module_path=module_path, name='user')
 class UserPromptUpState(BaseState):
     """The input state for User Agent"""
 
@@ -139,7 +141,7 @@ class UserPromptUpState(BaseState):
     """Sequence of rendered image paths after criticising"""
 
 
-@register(type='state', name='shared')
+@RegisterState(module_path=module_path, name='shared')
 class SharedState(
     PlannerState,
     RetrieverState,

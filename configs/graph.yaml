@@ -6,6 +6,6 @@ state_schema:
   type: state
   name: shared
 
-context_schema:
-  type: context
-  name: shared
+#context_schema:
+#  type: context
+#  name: shared

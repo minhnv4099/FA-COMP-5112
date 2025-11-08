@@ -12,18 +12,21 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.config import RunnableConfig
 from langgraph.graph import START, END
 from langgraph.graph.state import StateGraph, CompiledStateGraph
-from langgraph.types import Command
+from langgraph.runtime import Runtime
+from langgraph.types import Command, Interrupt
 from typing_extensions import Generic
 
-from .mapping import register, fetch_schema
-from ..utils import ASSETS_DIR
-from ..utils import BreakGraphOperation, NoConnectionEdges
-from ..utils import StateT, ContextT, InputT, OutputT, NodeT
+from src.registry import fetch_registered, RegisterGraph
+from src.types import StateT, ContextT, InputT, OutputT, NodeT
+from src.utils.constants import ASSETS_DIR
+from src.utils.exception import BreakGraphOperation, NoNodeError
 
 logger = logging.getLogger(__name__)
 
+module_path = __name__
 
-@register(name='base', type='graph')
+
+@RegisterGraph(module_path=module_path, name='base')
 class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     """The Base Graph class
 
@@ -31,17 +34,14 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     wrap corresponding state channels (e.g. 'state_schema', 'input_schema' of that node, type of state of the next node)
     """
 
-    name: str
-    """Name of graph"""
+    name: Optional[str]
+    """Name of the graph"""
 
     graph: StateGraph[StateT, ContextT, InputT, OutputT]
     """Graph map with node as an agent"""
 
     complied_graph: CompiledStateGraph[StateT, ContextT, InputT, OutputT]
     """The compiled graph"""
-
-    name: Optional[str]
-    """Name of the graph"""
 
     state_schema: type[StateT]
     """The overall state schema of the graph"""
@@ -61,37 +61,38 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     def __init__(
             self,
             name: str,
-            state_schema: StateT | dict,
-            context_schema: ContextT | None = None,
+            state_schema: Union[StateT, dict],
+            context_schema: Union[ContextT, dict] = None,
             *,
-            input_schema: InputT | None = None,
-            output_schema: OutputT | None = None,
+            input_schema: Union[InputT, dict] = None,
+            output_schema: Union[OutputT, dict] = None,
             nodes: Optional[list[NodeT]] = None,
             **kwargs,
     ):
         self.name = name
-        self.state_schema = fetch_schema(state_schema)
-        self.context_schema = fetch_schema(context_schema)
-        self.input_schema = fetch_schema(input_schema)
-        self.output_schema = fetch_schema(output_schema)
+        self.state_schema = fetch_registered(state_schema)
+        self.context_schema = fetch_registered(context_schema)
+        self.input_schema = fetch_registered(input_schema)
+        self.output_schema = fetch_registered(output_schema)
 
         self.nodes = nodes
         if not self.nodes:
-            logger.critical("No any nodes")
+            raise NoNodeError("No node found")
 
         self.graph = StateGraph[StateT, ContextT, InputT, OutputT](
             state_schema=self.state_schema,
             context_schema=self.context_schema,
-            input_schema=input_schema,
-            output_schema=output_schema
+            input_schema=self.input_schema,
+            output_schema=self.output_schema
         )
 
         self.is_interrupted = False
         self.state = None
-        self.config = {
-            "configurable": {"thread_id": "form-1"},
-            'recursion_limit': 200
-        }
+
+        self.config = RunnableConfig(
+            configurable={"thread_id": "form-1"},
+            recursion_limit=200,
+        )
 
     @property
     def compiled(self):
@@ -114,6 +115,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
                 f.write(image_bytes)
 
             logger.info(f"Write image of graph into '{file_path}'")
+
         except ValueError as e:
             print(e)
 
@@ -130,20 +132,25 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
                 input_schema=node.input_schema
             )
 
-    def _add_edges(self, nodes: list[NodeT]):
+    def _add_edges(self, nodes: list[str | NodeT]):
         for i, node in enumerate(nodes):
             name_node = self.standardize_name_node(node.name)
+
             for in_vertex in node.edges['in_coming']:
                 if isinstance(in_vertex, str):
                     if "start" in in_vertex:
                         in_vertex = START
-                    self._add_edge(start_key=in_vertex, end_key=name_node)
+                else:
+                    in_vertex = node.name
+                self._add_edge(start_key=in_vertex, end_key=name_node)
 
             for out_vertex in node.edges['out_going']:
                 if isinstance(out_vertex, str):
                     if "end" in out_vertex:
                         out_vertex = END
-                    self.graph.add_edge(start_key=name_node, end_key=out_vertex)
+                else:
+                    out_vertex = node.name
+                self.graph.add_edge(start_key=name_node, end_key=out_vertex)
 
     def _add_conditional_edges(self):
         raise NotImplementedError
@@ -151,15 +158,19 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     def _add_edge(self, start_key, end_key):
         try:
             self.graph.add_edge(start_key, end_key)
-        except NoConnectionEdges:
+        except ValueError as e:
             pass
 
     def init_graph(self):
         """Initialize the graph by adding nodes, connect them and compile"""
+
         self._add_nodes(self.nodes)
         self._add_edges(self.nodes)
 
-        self.complied_graph = self.graph.compile(checkpointer=MemorySaver())
+        self.complied_graph = self.graph.compile(
+            checkpointer=MemorySaver(),
+            name=self.name
+        )
 
     def __call__(self, task, prompt, *args, **kwargs):
         try:
@@ -189,15 +200,17 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
         return result
 
-    def invoke(
+    def _invoke(
             self,
-            inputs: Union[StateT, InputT, str],
-            context: Optional[ContextT] = None,
+            input: Union[StateT, InputT, str],
+            context: Runtime[ContextT] = None,
             config: Optional[RunnableConfig] = None,
     ):
-        inputs = self._convert_input(inputs)
+        inputs = self._convert_input(input)
+
         try:
-            self.state = self._invoke(inputs, context=context, config=config)
+            self.state = self.invoke(input=inputs, context=context, config=config)
+
             while True:
                 additional_prompt = input("Enter additional prompt (e.g. change color to red): ")
                 self.state = self._resume(additional_prompt)
@@ -207,24 +220,31 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             # AgentAsNode.log_conversation(logger, e.state['messages'])
             return self.state.get('msg', None)
 
-    def _invoke(
+    def invoke(
             self,
             input: Union[StateT, InputT, str],
-            context: Optional[ContextT] = None,
+            context: Runtime[ContextT] = None,
             config: Optional[RunnableConfig] = None,
-    ):
-        """The invoke function to call chat model
+    ) -> Union[OutputT, StateT, Interrupt]:
+        """Invoke the graph, get any result (state or interrupted value)
 
         Args:
-            input (str, dict):
+            input (StateT, str):
+                The input to pass to graph execution
             context:
+                The context goes through the execution
             config:
+                The config goes through the execution
+        Returns:
+            Union[OutputT, StateT, Interrupt]
         """
+
         inputs = self._convert_input(input)
+
         self.state = self.complied_graph.invoke(
             input=inputs,
-            config=self.config,
             context=context,
+            config=config if config else self.config,
         )
 
         return self.state
@@ -232,6 +252,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     def _convert_input(self, inputs):
         if isinstance(inputs, str):
             inputs = {'task': inputs}
+
         return inputs
 
     def _resume(self, input):

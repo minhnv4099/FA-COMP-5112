@@ -3,7 +3,7 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import logging
-from typing import Any, Literal, Union
+from typing import Literal, Union
 
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -12,40 +12,30 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command
 from typing_extensions import override
 
-from ..base.agent import AgentAsNode, register
-from ..base.utils import DirectionRouter
-from ..utils.types import InputT, OutputT
+from src.base.node import AgentAsNode
+from src.base.utils import DirectionRouter
+from src.registry import RegisterNode, RegisterAgent
+from src.types import InputT, OutputT
+from src.utils.decorator import add_note_docstring
 
 logger = logging.getLogger(__name__)
 
 
-@register(type="agent", name='retriever')
+@add_note_docstring(docs="Used for only 'COMP-5112' project")
+@RegisterAgent(module_path=__name__, name='retriever')
+@RegisterNode(module_path=__name__, name='retriever')
 class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
     """The Retriever Agent class"""
 
     def __init__(
             self,
-            metadata: dict = None,
-            edges: dict[str, tuple[str]] = None,
-            input_schema: Any = None,
-            tool_schemas: list = None,
-            output_schema: Any = None,
+            *args,
             embedding_name: str = None,
             n_docs: int = None,
             db_path: str = None,
-            template_file: str = None,
             **kwargs
     ):
-        super().__init__(
-            metadata=metadata,
-            edges=edges,
-            input_schema=input_schema,
-            tool_schemas=tool_schemas,
-            output_schema=output_schema,
-            template_file=template_file,
-            **kwargs,
-        )
-        self._prepare_chat_template()
+        super().__init__(*args, **kwargs, )
 
         gpt4all_kwargs = {'allow_download': 'True'}
         self.embedding = GPT4AllEmbeddings(
@@ -78,6 +68,7 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
             **kwargs
     ) -> Union[OutputT, Command[Literal['coding']], OutputT]:
         """"""
+
         logger.info(self.opening_symbols)
 
         conversation = []
@@ -86,9 +77,16 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
         for i, query in enumerate(state['queries']):
             separator = '\n' if state['coding_task'] == 'fix' else ''
             logger.info(f"query {i + 1}/{len(state['queries'])}: {separator}{query}")
+
             docs = self.retrieving_engine.invoke(query)
             # -------------------------------------------------
-            formatted_template = self.chat_template.invoke({'query': query, 'retrieved_docs': docs})
+            formatted_template = self._get_pretty_formatted_prompt(
+                chat_prompt_template=self.chat_template,
+                input={
+                    'query': query,
+                    'retrieved_docs': docs
+                }
+            )
             summary, _messages = self.chat_model_call(formatted_template)
             # -------------------------------------------------
             retrieved_docs[i] = summary
