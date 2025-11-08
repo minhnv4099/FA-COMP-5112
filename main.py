@@ -5,7 +5,7 @@
 import hydra
 from omegaconf import DictConfig
 
-from src.base.coordinator import Coordinator
+from src.coordinator import Coordinator
 from src.utils import find_load_env
 
 find_load_env()
@@ -27,7 +27,8 @@ def main(cfg: DictConfig):
         **cfg.graph
     )
     graph.init_graph()
-    graph.invoke(cfg.task)
+
+    graph.invoke('create a 3d table')
 
 
 if __name__ == '__main__':

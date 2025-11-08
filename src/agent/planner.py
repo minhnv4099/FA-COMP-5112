@@ -3,57 +3,38 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import logging
-from typing import Any, Literal
-from typing_extensions import override
+from typing import Literal, Generic
 
-from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
+from typing_extensions import override
 
-from ..base.agent import AgentAsNode, register
-from ..base.state import PlannerState
-from ..base.utils import DirectionRouter
-from ..utils.types import InputT, OutputT
+from src.base.node import AgentAsNode
+from src.base.state import PlannerState
+from src.base.utils import DirectionRouter
+from src.registry import RegisterNode, RegisterAgent
+from src.types import InputT, StateT, OutputT, ContextT
+from src.utils.decorator import add_note_docstring
 
 logger = logging.getLogger(__name__)
 
+module_path = __name__
 
-@register(type="agent", name='planner')
-class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
+
+@add_note_docstring(docs="Used for only 'COMP-5112' project")
+@RegisterAgent(module_path=module_path, name='planner')
+@RegisterNode(module_path=module_path, name='planner')
+class PlannerAgent(AgentAsNode, Generic[StateT, ContextT, InputT, OutputT], node_name='Planner', use_model=True):
     """The Planner Agent class"""
 
     @override
     def __init__(
             self,
-            metadata: dict = None,
-            input_schema: InputT = None,
-            edges: dict[str, tuple[str]] = None,
-            tool_schemas: list = None,
-            output_schema: Any = None,
-            model_name: str = None,
-            model_provider: str = None,
-            model_api_key: str = None,
-            output_schema_as_tool: bool = None,
-            chat_model: BaseChatModel = None,
-            template_file: str = None,
+            *args,
             max_subtasks: int = None,
             **kwargs
     ):
-        super().__init__(
-            metadata=metadata,
-            input_schema=input_schema,
-            edges=edges,
-            tool_schemas=tool_schemas,
-            output_schema=output_schema,
-            model_name=model_name,
-            model_provider=model_provider,
-            model_api_key=model_api_key,
-            output_schema_as_tool=output_schema_as_tool,
-            chat_model=chat_model,
-            template_file=template_file,
-            **kwargs
-        )
-        self._prepare_chat_template()
+        super().__init__(*args, **kwargs)
         self.max_subtasks = max_subtasks
 
     @override
@@ -69,16 +50,18 @@ class PlannerAgent(AgentAsNode, node_name='Planner', use_model=True):
         logger.info(self.opening_symbols)
         logger.info(f"TASK: {state['task']}, Max subtasks: {self.max_subtasks}")
         # -------------------------------------------------
-        formatted_prompt = self.chat_template.invoke(
+        formatted_prompt = self._get_pretty_formatted_prompt(
+            chat_prompt_template=self.chat_template,
             input={
                 'task': state['task'],
                 'max_subtasks': self.max_subtasks,
-            })
+            }
+        )
 
-        # response, messages = self.chat_model_call(formatted_prompt)
+        response, messages = self.chat_model_call(formatted_prompt)
         # -------------------------------------------------
-        response = [state['task']]
-        messages = [state['task']]
+        # response = [state['task']]
+        # messages = [state['task']]
         logger.info(f"Number of delegated subtasks: {len(response)}")
 
         self._finish_session(logger, messages)

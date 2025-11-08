@@ -4,20 +4,24 @@
 #
 import logging
 
+from langchain_core.prompts import ChatPromptTemplate
 from langgraph.config import RunnableConfig
 from langgraph.types import interrupt
 from typing_extensions import override
 
-from ..base.agent import AgentAsNode
-from ..base.mapping import register
-from ..base.utils import DirectionRouter
-from ..utils.exception import UserTerminated
-from ..utils.types import InputT, OutputT
+from src.base.node import AgentAsNode
+from src.base.utils import DirectionRouter
+from src.registry import RegisterNode, RegisterAgent
+from src.types import InputT, OutputT
+from src.utils.decorator import add_note_docstring
+from src.utils.exception import UserTerminated
 
 logger = logging.getLogger(__name__)
 
 
-@register(name='user', type='agent')
+@add_note_docstring(docs="Used for only 'COMP-5112' project")
+@RegisterAgent(module_path=__name__, name='user')
+@RegisterNode(module_path=__name__, name='user')
 class UserAgent(AgentAsNode, node_name="User", use_model=False):
     """The User Agent class"""
 
@@ -61,4 +65,8 @@ class UserAgent(AgentAsNode, node_name="User", use_model=False):
 
     @override
     def _prepare_message_templates(self, *args, **kwargs):
+        ...
+
+    @override
+    def _prepare_chat_template(self, system_template=None, human_template=None) -> ChatPromptTemplate:
         ...

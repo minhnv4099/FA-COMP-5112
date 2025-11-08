@@ -4,9 +4,8 @@
 #
 import logging
 from collections import defaultdict
-from typing import Sequence, Optional
+from typing import Sequence, Optional, Union
 
-from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import (
     HumanMessagePromptTemplate,
     SystemMessagePromptTemplate,
@@ -15,59 +14,31 @@ from langchain_core.prompts import (
 from langchain_core.runnables.config import RunnableConfig
 from typing_extensions import override
 
-from .critic import CriticAgent
-from ..base.agent import AgentAsNode, register
-from ..base.utils import DirectionRouter
-from ..utils.exception import NoRenderImages
-from ..utils.file import load_image_content, load_prompt_template_file
-from ..utils.types import InputT, OutputT
+from src.agent.critic import CriticAgent
+from src.base.node import AgentAsNode
+from src.base.utils import DirectionRouter
+from src.registry import RegisterAgent, RegisterNode
+from src.types import InputT, OutputT, StateT
+from src.utils.decorator import add_note_docstring
+from src.utils.exception import NoRenderImages
+from src.utils.file import load_image_content, load_prompt_template_file
 
 logger = logging.getLogger(__name__)
 
 
-@register(type="agent", name='verification')
+@add_note_docstring(docs="Used for only 'COMP-5112' project")
+@RegisterAgent(module_path=__name__, name='verification')
+@RegisterNode(module_path=__name__, name='verification')
 class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
     """The Verification Agent class"""
 
     def __init__(
             self,
-            metadata: dict = None,
-            input_schema: InputT | dict = None,
-            edges: dict[str, tuple[str]] = None,
-            tool_schemas: list | list[dict] = None,
-            output_schema: OutputT | list[OutputT] | list[dict] = None,
-            model_name: str = None,
-            model_provider: str = None,
-            model_api_key: str = None,
-            output_schema_as_tool: bool = None,
-            chat_model: BaseChatModel = None,
-            save_rendered_dir: str = None,
-            anchor_script_path: str = None,
+            *args,
             verification_attempts: int = None,
-            camera_setting_file: str = None,
-            camera_template_file: str = None,
-            # templates
-            template_file: str = None,
             **kwargs
     ):
-        super().__init__(
-            metadata=metadata,
-            input_schema=input_schema,
-            edges=edges,
-            tool_schemas=tool_schemas,
-            output_schema=output_schema,
-            model_name=model_name,
-            model_provider=model_provider,
-            model_api_key=model_api_key,
-            output_schema_as_tool=output_schema_as_tool,
-            chat_model=chat_model,
-            template_file=template_file,
-            save_rendered_dir=save_rendered_dir,
-            anchor_script_path=anchor_script_path,
-            camera_setting_file=camera_setting_file,
-            camera_template_file=camera_template_file,
-            **kwargs
-        )
+        super().__init__(*args, **kwargs)
 
         self.verification_attempts = verification_attempts
         self.verification_tries: int = 0
@@ -75,13 +46,14 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
     @override
     def __call__(
             self,
-            state: InputT | dict,
+            state: Union[StateT, InputT, dict],
             runtime: RunnableConfig = None,
             context: RunnableConfig = None,
             config: RunnableConfig = None,
             **kwargs
-    ) -> OutputT:
+    ) -> Union[OutputT, StateT, DirectionRouter]:
         """"""
+
         logger.info(self.opening_symbols)
 
         # script after fixing
@@ -265,10 +237,18 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
             template_format='f-string',
         )
 
-    def _prepare_chat_template(self, human_template=None):
-        if human_template is None:
+    @override
+    def _prepare_chat_template(
+            self,
+            system_template=None,
+            human_template=None
+    ) -> ChatPromptTemplate | None:
+        """"""
+
+        if not (system_template or human_template):
             return None
-        return ChatPromptTemplate(
-            messages=[self.system_template, human_template],
-            template_format='f-string'
+
+        return super()._prepare_chat_template(
+            system_template=system_template,
+            human_template=human_template
         )

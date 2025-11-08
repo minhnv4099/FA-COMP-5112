@@ -7,7 +7,6 @@ import os
 from copy import deepcopy
 from typing import Union
 
-from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
@@ -16,64 +15,44 @@ from langchain_core.prompts import (
 from langgraph.config import RunnableConfig
 from langgraph.graph.state import END
 from langgraph.types import Command, Send
-from typing_extensions import override, Any
+from typing_extensions import override, overload
 
-from ..base.agent import AgentAsNode
-from ..base.mapping import register
-from ..base.tool import execute_script, write_script
-from ..base.utils import DirectionRouter
-from ..utils.exception import ScriptWithError, ExceedFixErrorAttempts
-from ..utils.file import load_prompt_template_file
-from ..utils.types import InputT, OutputT
+from src.base.node import AgentAsNode
+from src.base.tool import execute_script, write_script
+from src.base.utils import DirectionRouter
+from src.registry import RegisterAgent, RegisterNode
+from src.types import InputT, OutputT
+from src.utils.decorator import add_note_docstring
+from src.utils.exception import ScriptWithError, ExceedFixErrorAttempts
+from src.utils.file import load_prompt_template_file
 
 logger = logging.getLogger(__name__)
 
 
-@register(type="agent", name='coding')
+@add_note_docstring(docs="Used for only 'COMP-5112' project")
+@RegisterAgent(module_path=__name__, name='coding')
+@RegisterNode(module_path=__name__, name='coding')
 class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
     """The Coding Agent class"""
 
     @override
     def __init__(
             self,
-            metadata: dict = None,
-            edges: dict[str, tuple[str]] = None,
-            input_schema: InputT = None,
-            tool_schemas: list = None,
-            output_schema: Any = None,
-            output_schema_as_tool: bool = None,
-            model_name: str = None,
-            model_provider: str = None,
-            model_api_key: str = None,
-            chat_model: BaseChatModel = None,
+            *args,
             save_scripts: bool = None,
             script_folder: str = None,
             anchor_script_file: str = None,
             check_error_file: str = None,
-            # templates
-            template_file: str = None,
             fix_error_attempts: int = None,
             **kwargs
     ):
-        super().__init__(
-            metadata=metadata,
-            edges=edges,
-            input_schema=input_schema,
-            tool_schemas=tool_schemas,
-            output_schema=output_schema,
-            output_schema_as_tool=output_schema_as_tool,
-            model_name=model_name,
-            model_provider=model_provider,
-            model_api_key=model_api_key,
-            chat_model=chat_model,
-            template_file=template_file,
-            **kwargs
-        )
+        super().__init__(*args, **kwargs)
         self.save_scripts = save_scripts
 
         self.check_error_file = check_error_file
         self.script_folder = script_folder
         self.anchor_script_file = anchor_script_file
+
         # shutil.rmtree(self.script_folder, ignore_errors=True)
         os.makedirs(self.script_folder, exist_ok=True)
         os.makedirs(os.path.split(self.anchor_script_file)[0], exist_ok=True)
@@ -223,13 +202,24 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
 
         return formatted_prompt
 
+    @overload
+    def _prepare_chat_template(self):
+        ...
+
     @override
-    def _prepare_chat_template(self, human_template, *args, **kwargs):
-        return ChatPromptTemplate([self.system_template, human_template])
+    def _prepare_chat_template(self, system_template=None, human_template=None) -> ChatPromptTemplate | None:
+        if not (system_template or human_template):
+            return None
+
+        return super()._prepare_chat_template(
+            system_template=system_template,
+            human_template=human_template
+        )
 
     @override
     def _prepare_message_templates(self, *args, **kwargs):
         template_dict = load_prompt_template_file(self.template_file)
+
         self.system_template = SystemMessagePromptTemplate.from_template(
             template=template_dict['system_template'],
             template_format='f-string'
@@ -248,7 +238,7 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
         )
 
     def _prepare_generate_prompt(self, state):
-        chat_template = self._prepare_chat_template(self.human_generate_template)
+        chat_template = self._prepare_chat_template(human_template=self.human_generate_template)
 
         # that's called only when coding_task is 'generate
         # when queries, from both of 'state' and 'copy_state', are subtasks
@@ -259,30 +249,36 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
             f"{state['coding_task']}: query {1 + self.copy_state['query_offset']}/{self.copy_state['num_queries']}: {query}")
         logger.info(f"Number of previous scripts: {len(self.copy_state['previous_scripts'])}")
         # ---------------------------------------------------
-        formatted_prompt = chat_template.invoke({
-            "subtask": query,
-            "previous_scripts": self._dump_scripts(self.copy_state['previous_scripts']),
-            "summary": docs
-        })
+        formatted_prompt = self._get_pretty_formatted_prompt(
+            chat_prompt_template=chat_template,
+            input={
+                "subtask": query,
+                "previous_scripts": self._dump_scripts(self.copy_state['previous_scripts']),
+                "summary": docs
+            }
+        )
         # ---------------------------------------------------
         return formatted_prompt
 
     def _prepare_fix_prompt(self, state):
-        chat_template = self._prepare_chat_template(self.human_fix_template)
+        chat_template = self._prepare_chat_template(human_template=self.human_fix_template)
 
         logger.info(f"{state['coding_task']}: {self.fix_error_tries}(tries)/{self.fix_error_attempts}(attempts)")
         logger.info(f"error: {state['queries'][0]}")
         # ---------------------------------------------------
-        formatted_prompt = chat_template.invoke({
-            'current_script': state['current_script'],
-            'error': state['queries'],
-            'summary': state['retrieved_docs'][0]
-        })
+        formatted_prompt = self._get_pretty_formatted_prompt(
+            chat_prompt_template=chat_template,
+            input={
+                'current_script': state['current_script'],
+                'error': state['queries'],
+                'summary': state['retrieved_docs'][0]
+            }
+        )
         # ---------------------------------------------------
         return formatted_prompt
 
     def _prepare_improve_prompt(self, state):
-        chat_template = self._prepare_chat_template(self.human_improve_template)
+        chat_template = self._prepare_chat_template(human_template=self.human_improve_template)
 
         query = state['queries'][self.copy_state['query_offset']]
         docs = state['retrieved_docs'][self.copy_state['query_offset']]
@@ -291,11 +287,14 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
             f"{state['coding_task']}: solution {1 + self.copy_state['query_offset']}/{self.copy_state['num_queries']}")
         logger.info(f"solution: {query}")
         # ---------------------------------------------------
-        formatted_prompt = chat_template.invoke({
-            'current_script': state['current_script'],
-            'solution': query,
-            'summary': docs
-        })
+        formatted_prompt = self._get_pretty_formatted_prompt(
+            chat_prompt_template=chat_template,
+            input={
+                'current_script': state['current_script'],
+                'solution': query,
+                'summary': docs
+            }
+        )
         # ---------------------------------------------------
         return formatted_prompt
 

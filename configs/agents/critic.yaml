@@ -11,13 +11,13 @@ camera_setting_file: src/camera/prepare_cam_data.py
 
 validating_prompt: null
 max_critics: 1
-n_rendered_images: 4
+n_rendered_images: 1
 
 input_schema:
   type: state
   name: critic
 output_schema:
-  type: structured_output
+  type: chat_output
   name: critic
 tool_schemas: [ ]
 
@@ -29,7 +29,7 @@ template_file: templates/prompt/critic.yaml
 
 use_model: True
 
-model_name: gpt-4o-mini
+model_name: openrouter/polaris-alpha #openai/gpt-5-nano
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

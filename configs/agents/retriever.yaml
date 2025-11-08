@@ -15,7 +15,7 @@ input_schema:
   type: state
   name: retriever
 output_schema:
-  type: structured_output
+  type: chat_output
   name: retriever
 tool_schemas: [ ]
 

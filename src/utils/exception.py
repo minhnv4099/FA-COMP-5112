@@ -14,7 +14,10 @@ __all__ = [
     "UserTerminated",
     "NotReturnStructuredOutput",
     "ReinvokeChat",
-    "CanNotParseJsonString"
+    "CanNotParseJsonString",
+    "NotOverrideError",
+    "NotFoundSchema",
+    "NoNodeError"
 ]
 
 
@@ -63,4 +66,16 @@ class ReinvokeChat(KeyError, ValueError):
 
 
 class NotReturnStructuredOutput(ReinvokeChat):
+    ...
+
+
+class NotOverrideError(ValueError):
+    ...
+
+
+class NotFoundSchema(KeyError):
+    ...
+
+
+class NoNodeError(ValueError):
     ...
