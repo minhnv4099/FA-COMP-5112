@@ -2,17 +2,16 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+import os
 import glob
 import logging
-import os
 from pathlib import Path
 from typing import Optional
-
-from langgraph.config import RunnableConfig
 from typing_extensions import override
 
-from src.base.node import AgentAsNode
-from src.base.utils import DirectionRouter
+from langgraph.config import RunnableConfig
+from langgraph.runtime import Runtime
+
 from src.registry import RegisterNode, RegisterAgent
 from src.types import InputT, OutputT
 from src.utils.constants import (
@@ -21,6 +20,8 @@ from src.utils.constants import (
     SAVE_CRITIC_DIR,
     DEFAULT_CAMERA_TEMPLATE_FILE
 )
+from src.base.node import AgentAsNode
+from src.base.utils import DirectionRouter
 from src.utils.decorator import add_note_docstring
 from src.utils.exception import NoRenderImages
 from src.utils.file import load_image_content
@@ -36,21 +37,20 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
     """The Critic Agent class"""
 
     def __init__(
-            self,
-            *args,
-            save_rendered_dir: str = None,
-            anchor_script_path: str = None,
-            validating_prompt: str = None,
-            camera_template_file: str = None,
-            camera_setting_file: str = None,
-            capture_image_file: str = None,
-            max_critics: int = None,
-            n_rendered_images: Optional[int] = None,
-            **kwargs
+        self,
+        *args,
+        save_rendered_dir: str = None,
+        anchor_script_path: str = None,
+        validating_prompt: str = None,
+        camera_template_file: str = None,
+        camera_setting_file: str = None,
+        capture_image_file: str = None,
+        max_critics: int = None,
+        n_rendered_images: Optional[int] = None,
+        **kwargs
     ):
         super().__init__(*args, **kwargs)
 
-        self._prepare_chat_template()
         self.validating_prompt = validating_prompt
         self.combined_script_template = "{creation}\n\n{camera_setting}\n\n{capture}"
 
@@ -66,19 +66,18 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
 
     @override
     def __call__(
-            self,
-            state: InputT | dict,
-            runtime: RunnableConfig = None,
-            context: RunnableConfig = None,
-            config: RunnableConfig = None,
-            **kwargs
+        self,
+        state: InputT | dict,
+        runtime: Runtime = None,
+        config: RunnableConfig = None,
+        **kwargs
     ) -> DirectionRouter | OutputT:
         """"""
+
         logger.info(self.opening_symbols)
 
-        script = state['current_script']
         logger.info("Setup camera to capture images")
-        ready_render_script, save_dir = self._process_script(script)
+        ready_render_script, save_dir = self._process_script(state['current_script'])
 
         rendered_image_paths = self._run_to_get_rendered_images(ready_render_script, save_dir)[:self.n_rendered_images]
         if not rendered_image_paths:
@@ -86,6 +85,7 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
             raise NoRenderImages(state=state)
 
         logger.info(f"Rendered images: {rendered_image_paths}")
+
         validating_prompt = state.get('validating_prompt', None) or self.validating_prompt
         logger.info(f"Validating prompt: {validating_prompt}")
 
@@ -144,6 +144,7 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
     def _process_script(self, script):
         with open(self.camera_setting_file, mode='r') as f:
             camera_setting = f.read()
+
         with open(self.capture_image_file, mode='r') as f:
             capture = f.read()
 
@@ -164,6 +165,7 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
     def _run_to_get_rendered_images(self, script: str, save_dir):
         logger.info(f'Write rendered-ready script to "{self.anchor_script_path}"')
         write_script(script, self.anchor_script_path)
+
         logger.info(f"Execute '{self.anchor_script_path}' to capture images.")
         execute_file(script_path=self.anchor_script_path)
 
@@ -176,5 +178,5 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
         par = Path(self.anchor_script_path).parent
         # shutil.rmtree(self.save_rendered_dir, ignore_errors=True)
 
-        os.makedirs(self.save_rendered_dir, exist_ok=True)
         os.makedirs(par, exist_ok=True)
+        os.makedirs(self.save_rendered_dir, exist_ok=True)

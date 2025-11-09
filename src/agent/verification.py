@@ -5,6 +5,7 @@
 import logging
 from collections import defaultdict
 from typing import Sequence, Optional, Union
+from typing_extensions import override
 
 from langchain_core.prompts import (
     HumanMessagePromptTemplate,
@@ -12,7 +13,7 @@ from langchain_core.prompts import (
     ChatPromptTemplate
 )
 from langchain_core.runnables.config import RunnableConfig
-from typing_extensions import override
+from langgraph.runtime import Runtime
 
 from src.agent.critic import CriticAgent
 from src.base.node import AgentAsNode
@@ -33,10 +34,10 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
     """The Verification Agent class"""
 
     def __init__(
-            self,
-            *args,
-            verification_attempts: int = None,
-            **kwargs
+        self,
+        *args,
+        verification_attempts: int = None,
+        **kwargs
     ):
         super().__init__(*args, **kwargs)
 
@@ -45,25 +46,23 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
 
     @override
     def __call__(
-            self,
-            state: Union[StateT, InputT, dict],
-            runtime: RunnableConfig = None,
-            context: RunnableConfig = None,
-            config: RunnableConfig = None,
-            **kwargs
+        self,
+        state: Union[StateT, InputT, dict],
+        runtime: Runtime = None,
+        config: RunnableConfig = None,
+        **kwargs
     ) -> Union[OutputT, StateT, DirectionRouter]:
         """"""
 
         logger.info(self.opening_symbols)
 
         # script after fixing
-        current_script = state['current_script']
         logger.info("Setup camera to capture fixes images")
-        processed_script, save_dir = self._process_script(current_script)
+        processed_script, save_dir = self._process_script(state['current_script'])
 
         rendered_images = state['rendered_images']
-
         modified_rendered_images = self._run_to_get_rendered_images(processed_script, save_dir)[:len(rendered_images)]
+
         logger.info(f"Images BEFORE: {rendered_images}")
         logger.info(f"Images AFTER: {modified_rendered_images}")
 
@@ -113,10 +112,10 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
         return DirectionRouter.goto(state=update_state, node=next_node, method='command')
 
     def _verify(
-            self,
-            state: InputT,
-            rendered_images: Sequence[str],
-            modified_rendered_images: Sequence[str]
+        self,
+        state: InputT,
+        rendered_images: Sequence[str],
+        modified_rendered_images: Sequence[str]
     ) -> (list[str], Sequence, Optional[dict]):
         # This point out that the verification agent has solved all issues,
         # meaning that, when additional prompt is typed, there are no longer any critics.
@@ -131,10 +130,10 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
         return None
 
     def _verify_critic(
-            self,
-            state,
-            rendered_images,
-            modified_rendered_images
+        self,
+        state,
+        rendered_images,
+        modified_rendered_images
     ) -> (list[str], Sequence, dict):
         """"""
         logger.info("Verify critics and fixes")
@@ -152,6 +151,7 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
             critics_solutions = critics_solutions_dict.get(i, None)
             if not critics_solutions:
                 continue
+
             previous_critics = [d['critic'] for d in critics_solutions]
             previous_solutions = [d['solution'] for d in critics_solutions]
             # ---------------------------------------------------------------
@@ -185,8 +185,14 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
 
         return solutions, conversation, new_critic_satisfied_solution_dict
 
-    def _verify_prompt(self, state, rendered_images, modified_rendered_images) \
-            -> (list[str], Sequence, None):
+    def _verify_prompt(
+        self,
+        state,
+        rendered_images,
+        modified_rendered_images
+    ) -> (list[str], Sequence, None):
+        """"""
+
         logger.info(f"Verify additional prompt: {state['additional_prompt']}")
 
         chat_template = self._prepare_chat_template(human_template=self.human_verify_prompt_template)
@@ -224,6 +230,7 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
     @override
     def _prepare_message_templates(self, *args, **kwargs):
         template_dict = load_prompt_template_file(self.template_file)
+
         self.system_template = SystemMessagePromptTemplate.from_template(
             template=template_dict['system_template'],
             template_format='f-string'
@@ -239,9 +246,9 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
 
     @override
     def _prepare_chat_template(
-            self,
-            system_template=None,
-            human_template=None
+        self,
+        system_template=None,
+        human_template=None
     ) -> ChatPromptTemplate | None:
         """"""
 

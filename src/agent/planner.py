@@ -4,49 +4,48 @@
 #
 import logging
 from typing import Literal, Generic
-
-from langchain_core.runnables import RunnableConfig
-from langgraph.types import Command
 from typing_extensions import override
 
+from langchain_core.runnables import RunnableConfig
+from langgraph.runtime import Runtime
+from langgraph.types import Command
+
+from src.registry import RegisterNode, RegisterAgent
+from src.types import InputT, StateT, OutputT, ContextT
 from src.base.node import AgentAsNode
 from src.base.state import PlannerState
 from src.base.utils import DirectionRouter
-from src.registry import RegisterNode, RegisterAgent
-from src.types import InputT, StateT, OutputT, ContextT
 from src.utils.decorator import add_note_docstring
 
 logger = logging.getLogger(__name__)
 
-module_path = __name__
-
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterAgent(module_path=module_path, name='planner')
-@RegisterNode(module_path=module_path, name='planner')
+@RegisterAgent(module_path=__name__, name='planner')
+@RegisterNode(module_path=__name__, name='planner')
 class PlannerAgent(AgentAsNode, Generic[StateT, ContextT, InputT, OutputT], node_name='Planner', use_model=True):
     """The Planner Agent class"""
 
     @override
     def __init__(
-            self,
-            *args,
-            max_subtasks: int = None,
-            **kwargs
+        self,
+        *args,
+        max_subtasks: int = None,
+        **kwargs
     ):
         super().__init__(*args, **kwargs)
         self.max_subtasks = max_subtasks
 
     @override
     def __call__(
-            self,
-            state: PlannerState | dict,
-            runtime: RunnableConfig = None,
-            context: RunnableConfig = None,
-            config: RunnableConfig = None,
-            **kwargs
+        self,
+        state: PlannerState | dict,
+        runtime: Runtime[ContextT] = None,
+        config: RunnableConfig = None,
+        **kwargs
     ) -> OutputT | Command[Literal['coding']]:
         """"""
+
         logger.info(self.opening_symbols)
         logger.info(f"TASK: {state['task']}, Max subtasks: {self.max_subtasks}")
         # -------------------------------------------------

@@ -4,18 +4,18 @@
 #
 import logging
 from typing import Literal, Union
+from typing_extensions import override
 
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
 from langgraph.config import RunnableConfig
 from langgraph.runtime import Runtime
 from langgraph.types import Command
-from typing_extensions import override
 
-from src.base.node import AgentAsNode
-from src.base.utils import DirectionRouter
 from src.registry import RegisterNode, RegisterAgent
 from src.types import InputT, OutputT
+from src.base.node import AgentAsNode
+from src.base.utils import DirectionRouter
 from src.utils.decorator import add_note_docstring
 
 logger = logging.getLogger(__name__)
@@ -28,12 +28,12 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
     """The Retriever Agent class"""
 
     def __init__(
-            self,
-            *args,
-            embedding_name: str = None,
-            n_docs: int = None,
-            db_path: str = None,
-            **kwargs
+        self,
+        *args,
+        embedding_name: str = None,
+        n_docs: int = None,
+        db_path: str = None,
+        **kwargs
     ):
         super().__init__(*args, **kwargs, )
 
@@ -60,12 +60,11 @@ class RetrieverAgent(AgentAsNode, node_name="Retriever", use_model=True):
 
     @override
     def __call__(
-            self,
-            state: InputT | dict,
-            runtime: Runtime[RunnableConfig] = None,
-            context: Runtime[RunnableConfig] = None,
-            config: RunnableConfig = None,
-            **kwargs
+        self,
+        state: InputT | dict,
+        runtime: Runtime = None,
+        config: RunnableConfig = None,
+        **kwargs
     ) -> Union[OutputT, Command[Literal['coding']], OutputT]:
         """"""
 

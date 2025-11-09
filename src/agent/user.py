@@ -3,16 +3,17 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import logging
+from typing_extensions import override
 
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.config import RunnableConfig
+from langgraph.runtime import Runtime
 from langgraph.types import interrupt
-from typing_extensions import override
 
-from src.base.node import AgentAsNode
-from src.base.utils import DirectionRouter
 from src.registry import RegisterNode, RegisterAgent
 from src.types import InputT, OutputT
+from src.base.node import AgentAsNode
+from src.base.utils import DirectionRouter
 from src.utils.decorator import add_note_docstring
 from src.utils.exception import UserTerminated
 
@@ -27,15 +28,16 @@ class UserAgent(AgentAsNode, node_name="User", use_model=False):
 
     @override
     def __call__(
-            self,
-            state: InputT | dict,
-            runtime: RunnableConfig = None,
-            context: RunnableConfig = None,
-            config: RunnableConfig = None,
-            **kwargs
+        self,
+        state: InputT | dict,
+        runtime: Runtime = None,
+        config: RunnableConfig = None,
+        **kwargs
     ) -> OutputT:
         """"""
+
         logger.info(self.opening_symbols)
+
         logger.info('Waiting an additional prompt...')
         if 'verification' in state.get('msg', ""):
             state['msg'] += " Waiting an additional prompt..."

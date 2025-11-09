@@ -5,7 +5,7 @@
 import os
 import logging
 from copy import deepcopy
-from typing import Union
+from typing import Union, Generic
 from typing_extensions import override, overload
 
 from langchain_core.prompts import (
@@ -14,6 +14,7 @@ from langchain_core.prompts import (
     HumanMessagePromptTemplate
 )
 from langgraph.config import RunnableConfig
+from langgraph.runtime import Runtime
 from langgraph.graph.state import END
 from langgraph.types import Command, Send
 
@@ -66,12 +67,12 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
     def __call__(
         self,
         state: InputT | dict,
-        runtime: RunnableConfig = None,
-        context: RunnableConfig = None,
+        runtime: Runtime = None,
         config: RunnableConfig = None,
         **kwargs
     ) -> Union[dict, Command, Send, OutputT]:
         """"""
+
         logger.info(self.opening_symbols)
         logger.info(f"Number of messages: {len(state['messages'])}")
 
@@ -120,6 +121,7 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
                 formatted_prompt = self._prepare_fix_prompt(state)
 
             script, messages = self._generate(formatted_prompt)
+
             # ------------error-free--------------------
             # the generated script is error-free,
             # it is also an ending point for recursive calls
@@ -201,10 +203,6 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
             formatted_prompt = self._prepare_fix_prompt(state)
 
         return formatted_prompt
-
-    @overload
-    def _prepare_chat_template(self):
-        ...
 
     @override
     def _prepare_chat_template(self, system_template=None, human_template=None) -> ChatPromptTemplate | None:
@@ -349,6 +347,7 @@ class CodingAgent(AgentAsNode, node_name='Coding', use_model=True):
     def _save_all_scripts(self):
         caller_folder = os.path.join(self.script_folder, self.copy_state["caller"])
         os.makedirs(caller_folder, exist_ok=True)
+
         n = len(os.listdir(caller_folder))
         save_dir = os.path.join(caller_folder, str(n))
         os.makedirs(save_dir, exist_ok=True)
