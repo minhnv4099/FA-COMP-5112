@@ -4,21 +4,20 @@
 #
 import logging
 from typing import Union, Generic
-
-from langgraph.runtime import Runtime
 from typing_extensions import override
 
-from src.base.agent import BaseAgent
+from langgraph.runtime import Runtime
+
 from src.registry import RegisterAgent
 from src.state import DEFAULT_STATE_SCHEMA
 from src.types import StateT, InputT, ContextT, OutputT, ToolSchema
+from src.base.agent import BaseAgent
 from src.utils.decorator import must_override
 
 logger = logging.getLogger(__name__)
 
-module_path = __name__
 
-
+@RegisterAgent(module_path=__name__, name='base')
 class BaseNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     """The Base Node class"""
 
@@ -37,7 +36,7 @@ class BaseNode(BaseAgent, Generic[StateT, ContextT, InputT, OutputT]):
     """
 
 
-@RegisterAgent(module_path=module_path, name='agent_as_node')
+@RegisterAgent(module_path=__name__, name='agent_as_node')
 class AgentAsNode(BaseNode, Generic[StateT, ContextT, InputT, OutputT, ToolSchema]):
     """The Agent As Node class
 
@@ -48,11 +47,11 @@ class AgentAsNode(BaseNode, Generic[StateT, ContextT, InputT, OutputT, ToolSchem
         ...
 
     def __init__(
-            self,
-            *args,
-            input_schema: Union[InputT, StateT] = DEFAULT_STATE_SCHEMA,
-            edges: dict = None,
-            **kwargs,
+        self,
+        *args,
+        input_schema: Union[InputT, StateT] = DEFAULT_STATE_SCHEMA,
+        edges: dict = None,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.edges = edges
@@ -61,9 +60,9 @@ class AgentAsNode(BaseNode, Generic[StateT, ContextT, InputT, OutputT, ToolSchem
     @override
     @must_override
     def __call__(
-            self,
-            state: InputT | StateT,
-            runtime: Runtime[ContextT] = None,
-            **kwargs
+        self,
+        state: InputT | StateT,
+        runtime: Runtime[ContextT] = None,
+        **kwargs
     ):
         raise NotImplementedError

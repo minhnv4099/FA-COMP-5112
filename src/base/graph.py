@@ -2,10 +2,11 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import logging
 import os
+import logging
 from pathlib import Path
 from typing import Optional, Union
+from typing_extensions import Generic
 
 from langchain_core.runnables.graph import MermaidDrawMethod
 from langgraph.checkpoint.memory import MemorySaver
@@ -14,19 +15,17 @@ from langgraph.graph import START, END
 from langgraph.graph.state import StateGraph, CompiledStateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import Command, Interrupt
-from typing_extensions import Generic
 
 from src.registry import fetch_registered, RegisterGraph
 from src.types import StateT, ContextT, InputT, OutputT, NodeT
 from src.utils.constants import ASSETS_DIR
 from src.utils.exception import BreakGraphOperation, NoNodeError
+from src.utils.decorator import add_note_docstring
 
 logger = logging.getLogger(__name__)
 
-module_path = __name__
 
-
-@RegisterGraph(module_path=module_path, name='base')
+@RegisterGraph(module_path=__name__, name='base')
 class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     """The Base Graph class
 
@@ -59,15 +58,15 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     """List of nodes in graph"""
 
     def __init__(
-            self,
-            name: str,
-            state_schema: Union[StateT, dict],
-            context_schema: Union[ContextT, dict] = None,
-            *,
-            input_schema: Union[InputT, dict] = None,
-            output_schema: Union[OutputT, dict] = None,
-            nodes: Optional[list[NodeT]] = None,
-            **kwargs,
+        self,
+        name: str,
+        state_schema: Union[StateT, dict],
+        context_schema: Union[ContextT, dict] = None,
+        *,
+        input_schema: Union[InputT, dict] = None,
+        output_schema: Union[OutputT, dict] = None,
+        nodes: Optional[list[NodeT]] = None,
+        **kwargs,
     ):
         self.name = name
         self.state_schema = fetch_registered(state_schema)
@@ -172,6 +171,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             name=self.name
         )
 
+    @add_note_docstring(docs="Used for only 'COMP-5112' project")
     def __call__(self, task, prompt, *args, **kwargs):
         try:
             if prompt:
@@ -180,6 +180,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             else:
                 logger.info('Operate task')
                 self.state = self._invoke(input=task)
+
         except BreakGraphOperation as e:
             self.state = e.state
 
@@ -200,13 +201,14 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
         return result
 
+    @add_note_docstring(docs="Used for only 'COMP-5112' project")
     def _invoke(
-            self,
-            input: Union[StateT, InputT, str],
-            context: Runtime[ContextT] = None,
-            config: Optional[RunnableConfig] = None,
+        self,
+        input: Union[StateT, InputT, str],
+        context: Runtime[ContextT] = None,
+        config: Optional[RunnableConfig] = None,
     ):
-        inputs = self._convert_input(input)
+        inputs = self._convert_input_with_task_key(input)
 
         try:
             self.state = self.invoke(input=inputs, context=context, config=config)
@@ -221,10 +223,10 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             return self.state.get('msg', None)
 
     def invoke(
-            self,
-            input: Union[StateT, InputT, str],
-            context: Runtime[ContextT] = None,
-            config: Optional[RunnableConfig] = None,
+        self,
+        input: Union[StateT, InputT, str],
+        context: Runtime[ContextT] = None,
+        config: Optional[RunnableConfig] = None,
     ) -> Union[OutputT, StateT, Interrupt]:
         """Invoke the graph, get any result (state or interrupted value)
 
@@ -239,7 +241,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             Union[OutputT, StateT, Interrupt]
         """
 
-        inputs = self._convert_input(input)
+        inputs = self._convert_input_with_task_key(input)
 
         self.state = self.complied_graph.invoke(
             input=inputs,
@@ -249,7 +251,8 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
         return self.state
 
-    def _convert_input(self, inputs):
+    @add_note_docstring(docs="Used for only 'COMP-5112' project")
+    def _convert_input_with_task_key(self, inputs):
         if isinstance(inputs, str):
             inputs = {'task': inputs}
 

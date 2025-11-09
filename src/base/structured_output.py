@@ -3,9 +3,8 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 from typing import Literal
-
-from pydantic import BaseModel, Field
 from typing_extensions import Sequence
+from pydantic import BaseModel, Field
 
 from src.registry import RegisterChatOutputSchema
 from src.utils.decorator import add_note_docstring

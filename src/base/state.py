@@ -3,10 +3,10 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 from typing import Sequence, Literal, Union
+from typing_extensions import Annotated, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
-from typing_extensions import Annotated, TypedDict
 
 from src.registry import RegisterState
 

@@ -2,11 +2,12 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import logging
 import os
+import logging
 from json import dumps, loads
 from json.decoder import JSONDecodeError
 from typing import Union, Generic, Any, Optional, Sequence, Iterable
+from typing_extensions import deprecated
 
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
@@ -20,7 +21,6 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.utils.interactive_env import is_interactive_env
 from langchain_openai import ChatOpenAI
-from typing_extensions import deprecated
 
 from src.chat_output import DEFAULT_CHAT_OUTPUT_SCHEMA
 from src.registry import RegisterChat, fetch_registered
@@ -32,10 +32,8 @@ from src.utils.file import load_prompt_template_file
 
 logger = logging.getLogger(__name__)
 
-module_path = __name__
 
-
-@RegisterChat(module_path=module_path, name='base_chat')
+@RegisterChat(module_path=__name__, name='base_chat')
 class BaseChatAssistance(Generic[OutputT]):
     """The Base Chat Assistance that communicates with user via text chat (conversation)"""
 
@@ -62,15 +60,6 @@ class BaseChatAssistance(Generic[OutputT]):
     """File containing message templates, from system to human templates. 
     That are all templates the agent used for its task"""
 
-    # invoke_attempts: int
-    # """Attempt to invoke chat model whenever error occur when calling invoke function"""
-
-    # invoke_tries: int
-    # """Number of tries invoking"""
-
-    # usage_metadata: dict
-    # """Usage metadata"""
-
     num_input_tokens: int
     """Volume of input tokens passed to chat model"""
 
@@ -91,18 +80,18 @@ class BaseChatAssistance(Generic[OutputT]):
             raise NotOverrideError(f"[Warning] Class '{cls.__name__}' didn't override: {missing_func}")
 
     def __init__(
-            self,
-            name: str,
-            metadata: dict = None,
-            output_schema: OutputT = DEFAULT_CHAT_OUTPUT_SCHEMA,
-            output_schema_as_tool: bool = None,
-            use_model: bool = False,
-            model_name: str = None,
-            model_provider: str = None,
-            model_api_key: str = None,
-            chat_model: BaseChatModel = None,
-            template_file: str = None,
-            **kwargs,
+        self,
+        name: str,
+        metadata: dict = None,
+        output_schema: OutputT = DEFAULT_CHAT_OUTPUT_SCHEMA,
+        output_schema_as_tool: bool = None,
+        use_model: bool = False,
+        model_name: str = None,
+        model_provider: str = None,
+        model_api_key: str = None,
+        chat_model: BaseChatModel = None,
+        template_file: str = None,
+        **kwargs,
     ):
         # metadata
         self.name = name
@@ -152,8 +141,6 @@ class BaseChatAssistance(Generic[OutputT]):
     @deprecated("No needed because can use cheap or free models.")
     def _check_model_name(self):
         ...
-        # if self.model_name not in SUPPORTED_MODEL:
-        #     raise ValueError(f"We now only support models: {', '.join(SUPPORTED_MODEL)}, but provided '{self.model_name}'")
 
     def _check_model_provider(self):
         if self.model_provider not in PROVIDER_TO_ENV:
@@ -260,9 +247,9 @@ class BaseChatAssistance(Generic[OutputT]):
 
     @add_note_docstring(docs="Used for 'COMP-5112' project")
     def __call__(
-            self,
-            input: Union[str, dict, PromptValue],
-            **kwargs
+        self,
+        input: Union[str, dict, PromptValue],
+        **kwargs
     ):
         """The abstractive node function receives state input and returns update state
         Subclasses must implement this method
@@ -283,11 +270,11 @@ class BaseChatAssistance(Generic[OutputT]):
         raise NotImplementedError("Use 'invoke()' to interact with chat.")
 
     def invoke(
-            self,
-            input: Union[str, PromptValue, Sequence[BaseMessage]],
-            config: Optional[RunnableConfig] = None,
-            *,
-            stop: Optional[list[str]] = None
+        self,
+        input: Union[str, PromptValue, Sequence[BaseMessage]],
+        config: Optional[RunnableConfig] = None,
+        *,
+        stop: Optional[list[str]] = None
     ) -> AIMessage:
         """Invoke chat model with input.
 
