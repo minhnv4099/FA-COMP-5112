@@ -2,6 +2,9 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+from src.utils import scan_module
+
+from src.agent.base import BaseAgent
 from src.agent.coding import CodingAgent
 from src.agent.critic import CriticAgent
 from src.agent.planner import PlannerAgent
@@ -23,4 +26,4 @@ def __getattr__(name):
     return __module_lookup[name]
 
 
-__all__ = list(__module_lookup.values())
+__all__ = scan_module(globals())
