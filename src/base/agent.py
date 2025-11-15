@@ -3,9 +3,10 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 """The module containing agent classes, with command and different capabilities"""
+from __future__ import annotations
 
 import logging
-from typing import Union, Generic, Sequence, Any, Optional
+from typing import Union, Generic, Sequence, Any, Optional, TYPE_CHECKING
 from typing_extensions import override, deprecated
 
 from langchain_core.messages import ToolMessage, AIMessage, BaseMessage, HumanMessage
@@ -22,7 +23,7 @@ from src.utils.decorator import add_note_docstring
 logger = logging.getLogger(__name__)
 
 
-@RegisterAgent(module_path=__name__, name='base_agent')
+# @RegisterAgent(module_path=__name__, name='base_agent')
 class BaseAgent(BaseChatAssistance, Generic[OutputT, ToolSchema]):
     """The Base Agent class using single system prompt and human template and being able to execute tools.\n
     However, just execute tools one once (no persistence)"""
@@ -40,14 +41,14 @@ class BaseAgent(BaseChatAssistance, Generic[OutputT, ToolSchema]):
         # super().__init_subclass__()
         ...
 
-    def __init__(
-        self,
-        *args,
-        tool_schemas: ToolSchema | list[Union[ToolSchema, dict]] = None,
-        **kwargs,
-    ):
-        self.tool_schemas = tool_schemas
-        super().__init__(**kwargs)
+    # def __init__(
+    #     self,
+    #     *args,
+    #     tool_schemas: ToolSchema | list[Union[ToolSchema, dict]] = None,
+    #     **kwargs,
+    # ):
+    #     self.tool_schemas = tool_schemas
+    #     super().__init__(**kwargs)
 
     def _convert_to_seq_message(self, input: Union[str, PromptValue]):
         if isinstance(input, str):

@@ -50,7 +50,7 @@ class RetrieverOutput(BaseOutput):
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
 @RegisterChatOutputSchema(name='coding', module_path=module_path)
 class CodingOutput(BaseOutput):
-    """Always use this output schema to response when generating code"""
+    """Always use this output schema to response user requires generating code"""
 
     script: str = Field(
         description="Generated script. NOTE: only use 'script' as a key, no any additional prefix or/and suffix character")

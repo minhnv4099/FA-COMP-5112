@@ -2,10 +2,12 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+from __future__ import annotations
+
 import os
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, TYPE_CHECKING
 from typing_extensions import Generic
 
 from langchain_core.runnables.graph import MermaidDrawMethod
@@ -22,6 +24,10 @@ from src.utils.constants import ASSETS_DIR
 from src.utils.exception import BreakGraphOperation, NoNodeError
 from src.utils.decorator import add_note_docstring
 
+if TYPE_CHECKING:
+    from langchain_core.messages import BaseMessage
+    from langgraph.types import StateSnapshot
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,10 +42,10 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     name: Optional[str]
     """Name of the graph"""
 
-    graph: StateGraph[StateT, ContextT, InputT, OutputT]
+    graph_builder: StateGraph[StateT, ContextT, InputT, OutputT]
     """Graph map with node as an agent"""
 
-    complied_graph: CompiledStateGraph[StateT, ContextT, InputT, OutputT]
+    graph: CompiledStateGraph[StateT, ContextT, InputT, OutputT]
     """The compiled graph"""
 
     state_schema: type[StateT]
@@ -78,7 +84,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
         if not self.nodes:
             raise NoNodeError("No node found")
 
-        self.graph = StateGraph[StateT, ContextT, InputT, OutputT](
+        self.graph_builder = StateGraph[StateT, ContextT, InputT, OutputT](
             state_schema=self.state_schema,
             context_schema=self.context_schema,
             input_schema=self.input_schema,
@@ -95,14 +101,14 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
     @property
     def compiled(self):
-        return self.graph.compiled
+        return self.graph_builder.compiled
 
     def save_image_graph(self, file_path: Union[str, Path] = None):
         if not self.compiled:
             logger.critical(f"The graph isn't compiled yet. Compile it first!")
             return
         try:
-            image_bytes = self.complied_graph.get_graph().draw_mermaid_png(
+            image_bytes = self.graph.get_graph().draw_mermaid_png(
                 max_retries=5, retry_delay=2.,
                 draw_method=MermaidDrawMethod.PYPPETEER
             )
@@ -124,11 +130,11 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     def _add_nodes(self, nodes: list[NodeT]):
         for i, node in enumerate(nodes):
             name_node = self.standardize_name_node(node.name)
-            self.graph.add_node(
+            self.graph_builder.add_node(
                 node=name_node,
                 action=node,
                 metadata=node.metadata,
-                input_schema=node.input_schema
+                input_schema=node.input_schema,
             )
 
     def _add_edges(self, nodes: list[str | NodeT]):
@@ -149,14 +155,14 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
                         out_vertex = END
                 else:
                     out_vertex = node.name
-                self.graph.add_edge(start_key=name_node, end_key=out_vertex)
+                self._add_edge(start_key=name_node, end_key=out_vertex)
 
     def _add_conditional_edges(self):
         raise NotImplementedError
 
     def _add_edge(self, start_key, end_key):
         try:
-            self.graph.add_edge(start_key, end_key)
+            self.graph_builder.add_edge(start_key, end_key)
         except ValueError as e:
             pass
 
@@ -166,9 +172,12 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
         self._add_nodes(self.nodes)
         self._add_edges(self.nodes)
 
-        self.complied_graph = self.graph.compile(
+        self.graph = self.graph_builder.compile(
             checkpointer=MemorySaver(),
-            name=self.name
+            name=self.name,
+            interrupt_before=[],
+            interrupt_after=[],
+            debug=False,
         )
 
     @add_note_docstring(docs="Used for only 'COMP-5112' project")
@@ -176,7 +185,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
         try:
             if prompt:
                 logger.info('Operate prompt')
-                self.state = self._resume(input=prompt)
+                self.state = self.resume(input=prompt)
             else:
                 logger.info('Operate task')
                 self.state = self._invoke(input=task)
@@ -215,7 +224,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
             while True:
                 additional_prompt = input("Enter additional prompt (e.g. change color to red): ")
-                self.state = self._resume(additional_prompt)
+                self.state = self.resume(additional_prompt)
 
         except BreakGraphOperation as e:
             self.state = e.state
@@ -225,8 +234,9 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     def invoke(
         self,
         input: Union[StateT, InputT, str],
-        context: Runtime[ContextT] = None,
         config: Optional[RunnableConfig] = None,
+        *,
+        context: Optional[Runtime[ContextT]] = None,
     ) -> Union[OutputT, StateT, Interrupt]:
         """Invoke the graph, get any result (state or interrupted value)
 
@@ -243,7 +253,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
         inputs = self._convert_input_with_task_key(input)
 
-        self.state = self.complied_graph.invoke(
+        self.state = self.graph.invoke(
             input=inputs,
             context=context,
             config=config if config else self.config,
@@ -258,9 +268,26 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
         return inputs
 
-    def _resume(self, input):
-        return self._invoke(Command(resume=input), config=self.config)
+    def resume(
+        self,
+        input: Union[StateT, InputT, dict],
+        config: Optional[RunnableConfig] = None,
+    ):
+        return self.invoke(
+            Command(resume=input),
+            config=config
+        )
 
     def pretty_print_dict(self):
         for k, v in self.graph.__dict__.items():
             print(f"{k}\n\t{v}\n{'=' * 50}")
+
+    def get_state(self, config: Optional[Union[RunnableConfig, dict]] = None) -> StateSnapshot:
+        return self.graph.get_state(config if config else self.config)
+
+    def get_messages(self, config: Optional[Union[RunnableConfig, dict]] = None) -> list[BaseMessage]:
+        return self.get_state(config).values.get('messages', [])
+
+    def print_conversation(self, config=None):
+        for m in self.get_messages(config):
+            m.pretty_print()

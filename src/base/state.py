@@ -9,19 +9,9 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
 from src.registry import RegisterState
+from src.utils import scan_module
 
-__all__ = [
-    "BaseState",
-    "PlannerState",
-    "RetrieverState",
-    "CodingState",
-    "CriticState",
-    "VerificationState",
-    "UserPromptUpState",
-    "SharedState"
-]
-
-module_path = __name__
+__all__ = scan_module(globals())
 
 
 class BaseState(TypedDict):
@@ -30,12 +20,11 @@ class BaseState(TypedDict):
     id: Annotated[int, ...]
     """ID of that state"""
 
-    messages: Annotated[Sequence[BaseMessage], add_messages]
-    """Sequence of messages of ``system``, ``user``, ``assistance``, ``tool``"""
+    messages: Annotated[list[BaseMessage],  add_messages]
+    """Sequence of messages of ``system``, ``user``, ``ai``, ``tool``, ``parser``"""
 
 
-# Agent/Node input states
-@RegisterState(module_path=module_path, name='planner')
+# @RegisterState(module_path=__name__, name='planner')
 class PlannerState(BaseState):
     """The input state for Planner Agent"""
 
@@ -43,7 +32,7 @@ class PlannerState(BaseState):
     """Given task provided by user prompt"""
 
 
-@RegisterState(module_path=module_path, name='retriever')
+# @RegisterState(module_path=__name__, name='retriever')
 class RetrieverState(BaseState):
     """The input state for Retriever Agent"""
 
@@ -54,7 +43,7 @@ class RetrieverState(BaseState):
     """Current task for Coding Agent: *generate script*, *fix error* and *apply improvements*"""
 
 
-@RegisterState(module_path=module_path, name='coding')
+# @RegisterState(module_path=__name__, name='coding')
 class CodingState(BaseState):
     """The input state for Coding Agent
     The Coding Agent has 2 main responsibilities:
@@ -96,7 +85,7 @@ class CodingState(BaseState):
     caller: Annotated[str, ...]
 
 
-@RegisterState(module_path=module_path, name='critic')
+@RegisterState(module_path=__name__, name='critic')
 class CriticState(BaseState):
     """The input state for Critic Agent"""
 
@@ -110,7 +99,7 @@ class CriticState(BaseState):
     """The original task given by user"""
 
 
-@RegisterState(module_path=module_path, name='verification')
+@RegisterState(module_path=__name__, name='verification')
 class VerificationState(BaseState):
     """The input state for Verification Agent"""
 
@@ -127,7 +116,7 @@ class VerificationState(BaseState):
     """Additional prompt provided by user"""
 
 
-@RegisterState(module_path=module_path, name='user')
+@RegisterState(module_path=__name__, name='user')
 class UserPromptUpState(BaseState):
     """The input state for User Agent"""
 
@@ -141,7 +130,7 @@ class UserPromptUpState(BaseState):
     """Sequence of rendered image paths after criticising"""
 
 
-@RegisterState(module_path=module_path, name='shared')
+@RegisterState(module_path=__name__, name='shared')
 class SharedState(
     PlannerState,
     RetrieverState,

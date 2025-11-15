@@ -61,5 +61,5 @@ def write_script(script: str, file_path: str = None,
 
     Returns: None
     """
-    from src.utils import write_script
+    from src.utils.file import write_script
     return write_script(script, file_path)

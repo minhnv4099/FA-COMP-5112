@@ -2,15 +2,15 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+from __future__ import annotations
+
 import os
 import logging
 from json import dumps, loads
 from json.decoder import JSONDecodeError
-from typing import Union, Generic, Any, Optional, Sequence, Iterable
+from typing import Union, Generic, Any, Optional, Sequence, Iterable, TYPE_CHECKING
 from typing_extensions import deprecated
 
-from langchain.chat_models.base import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.prompt_values import PromptValue
 from langchain_core.prompts import (
     ChatPromptTemplate,
@@ -22,13 +22,16 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.utils.interactive_env import is_interactive_env
 from langchain_openai import ChatOpenAI
 
-from src.chat_output import DEFAULT_CHAT_OUTPUT_SCHEMA
 from src.registry import RegisterChat, fetch_registered
 from src.supplier import PROVIDER_TO_ENV, PROVIDER_TO_BASE_URL
 from src.types import OutputT, OmegaList, SchemaLike, OmegaDict
 from src.utils.decorator import add_note_docstring, must_override
 from src.utils.exception import NotOverrideError
 from src.utils.file import load_prompt_template_file
+
+if TYPE_CHECKING:
+    from langchain_core.messages import AIMessage, BaseMessage
+    from langchain.chat_models.base import BaseChatModel
 
 logger = logging.getLogger(__name__)
 
@@ -70,22 +73,33 @@ class BaseChatAssistance(Generic[OutputT]):
         super().__init_subclass__()
 
         missing_func = []
+        comp_5112_func = []
 
         for name, attr in BaseChatAssistance.__dict__.items():
             if getattr(attr, "__must_override__", False):
                 if name not in cls.__dict__:
                     missing_func.append(name)
 
-        if missing_func:
-            raise NotOverrideError(f"[Warning] Class '{cls.__name__}' didn't override: {missing_func}")
+            if getattr(attr, "__note_docstring__", False):
+                if "5112" in attr.__note_docstring__:
+                    comp_5112_func.append(name)
+
+        if kwargs.get('show_5112', False):
+            if comp_5112_func:
+                logger.warning(f'{comp_5112_func} are used only for "COMP-5112" project. '
+                               f'Only use them in the project scope.')
+
+        if not kwargs.get('bypass_override', False):
+            if missing_func:
+                raise NotOverrideError(f"[Warning] Class '{cls.__name__}' didn't override: {missing_func}")
 
     def __init__(
         self,
-        name: str,
+        name: str = None,
         metadata: dict = None,
-        output_schema: OutputT = DEFAULT_CHAT_OUTPUT_SCHEMA,
+        output_schema: OutputT = None,
         output_schema_as_tool: bool = None,
-        use_model: bool = False,
+        use_model: bool = True,
         model_name: str = None,
         model_provider: str = None,
         model_api_key: str = None,
@@ -94,7 +108,7 @@ class BaseChatAssistance(Generic[OutputT]):
         **kwargs,
     ):
         # metadata
-        self.name = name
+        self.name = name if name else 'base_chat'
         self.metadata = metadata
 
         # chat model
@@ -110,8 +124,9 @@ class BaseChatAssistance(Generic[OutputT]):
 
         # prompt templates
         self.template_file = template_file
-        self._prepare_message_templates()
-        self._prepare_chat_template()
+        if self.template_file:
+            self._prepare_message_templates()
+            self._prepare_chat_template()
 
         # check model
         self._check_model_provider()
@@ -121,11 +136,8 @@ class BaseChatAssistance(Generic[OutputT]):
         # initialize model + bind schema
         if self.use_model:
             self._initialize_model()
-            schemas = self._validate_schemas()
-            self._bind_schemas(schemas=schemas)
 
         # usage metadata
-        self.response_metadata = dict()
         self.num_input_tokens = 0
         self.num_output_tokens = 0
 
@@ -133,6 +145,7 @@ class BaseChatAssistance(Generic[OutputT]):
         self.opening_symbols = "-" * 60 + self.name + "-" * 60
         self.ending_symbols = "*" * (120 + len(self.name))
 
+        # default config for each chat, using the name
         self.config = RunnableConfig(
             configurable={"thread_id": self.name},
             recursion_limit=200,
@@ -153,44 +166,6 @@ class BaseChatAssistance(Generic[OutputT]):
     def _check_chat_model(self):
         if self.chat_model is not None:
             logger.critical(f"Now we only accept instantiate `chat_model` from 'model_name'. Pass this value")
-
-    @must_override
-    def _prepare_message_templates(self, *args, **kwargs):
-        """Prepare message templates for system and human roles.
-
-        This method only works for Chat Assistance with **ONE** system prompt and **ONE** human prompt. \n
-        Override it by doing nothing if the chat has other message templates.
-        """
-
-        templates_dict = load_prompt_template_file(self.template_file)
-
-        self.system_template = SystemMessagePromptTemplate.from_template(
-            template=templates_dict.get('system_template', """"""),
-            template_format='f-string',
-        )
-        self.human_template = HumanMessagePromptTemplate.from_template(
-            template=templates_dict.get('human_template', """"""),
-            template_format='f-string',
-        )
-
-    @must_override
-    def _prepare_chat_template(self, system_template=None, human_template=None) -> ChatPromptTemplate:
-        """Prepare chat template for a turn
-
-        The method works with the constraints that 1 system template followed by a human template
-        """
-
-        if system_template is None:
-            _system_template = self.system_template
-        else:
-            _system_template = system_template
-
-        self.chat_template = ChatPromptTemplate(
-            messages=[_system_template, human_template if human_template else self.human_template],
-            template_format='f-string',
-        )
-
-        return self.chat_template
 
     def _initialize_model(self):
         """Initialize model based on ``model_name``, ``model_provider``"""
@@ -219,31 +194,6 @@ class BaseChatAssistance(Generic[OutputT]):
             seq = [seq, ]
 
         return seq or []
-
-    @must_override
-    def _validate_schemas(self) -> list[OutputT]:
-        """Validate output schemas to chat model"""
-
-        self.output_schema = [
-            self.fetch_schema(schema)
-            for schema in self._convert_to_list(seq=self.output_schema)
-        ]
-
-        return self.output_schema
-
-    def fetch_schema(self, schema: Union[dict, SchemaLike]) -> Union[None, SchemaLike]:
-        if not isinstance(schema, OmegaDict):
-            return schema
-
-        return fetch_registered(metadata=schema)
-
-    def _bind_schemas(self, schemas):
-        """Bind schemas to chat model, and force model to always use the first schema"""
-
-        self.chat_model = self.chat_model.bind_tools(
-            tools=schemas,
-            # tool_choice=schemas[0]
-        )
 
     @add_note_docstring(docs="Used for 'COMP-5112' project")
     def __call__(
@@ -292,6 +242,47 @@ class BaseChatAssistance(Generic[OutputT]):
 
         return ai_message
 
+    @add_note_docstring('COMP-5112 project')
+    @must_override
+    def _prepare_message_templates(self, *args, **kwargs):
+        """Prepare message templates for system and human roles.
+
+        This method only works for Chat Assistance with **ONE** system prompt and **ONE** human prompt. \n
+        Override it by doing nothing if the chat has other message templates.
+        """
+
+        templates_dict = load_prompt_template_file(self.template_file)
+
+        self.system_template = SystemMessagePromptTemplate.from_template(
+            template=templates_dict.get('system_template', """"""),
+            template_format='f-string',
+        )
+        self.human_template = HumanMessagePromptTemplate.from_template(
+            template=templates_dict.get('human_template', """"""),
+            template_format='f-string',
+        )
+
+    @add_note_docstring('COMP-5112 project')
+    @must_override
+    def _prepare_chat_template(self, system_template=None, human_template=None) -> ChatPromptTemplate:
+        """Prepare chat template for a turn
+
+        The method works with the constraints that 1 system template followed by a human template
+        """
+
+        if system_template is None:
+            _system_template = self.system_template
+        else:
+            _system_template = system_template
+
+        self.chat_template = ChatPromptTemplate(
+            messages=[_system_template, human_template if human_template else self.human_template],
+            template_format='f-string',
+        )
+
+        return self.chat_template
+
+    @add_note_docstring('COMP-5112 project')
     def _get_pretty_formatted_prompt(self, chat_prompt_template: ChatPromptTemplate, input: dict):
         pretty_input = self._format_input(input=input)
 
@@ -306,7 +297,7 @@ class BaseChatAssistance(Generic[OutputT]):
         return _inputs
 
     @classmethod
-    def get_pretty_prep(cls, content: str):
+    def get_pretty_prep(cls, content: Any):
         try:
             if isinstance(content, str):
                 return dumps(loads(content), indent=4)
