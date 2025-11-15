@@ -1,0 +1,34 @@
+#
+#  Copyright (c) 2025
+#  Minh NGUYEN <vnguyen9@lakeheadu.ca>
+#
+from typing import Any
+
+from langchain_core.messages import ChatMessage, ToolMessage, BaseMessage
+
+
+class ParsedTollCallMessage(ToolMessage):
+    """The Parsed Tool Call representing structured output parsed from a tool call distinguishing with Tool Message
+    """
+
+    type: str = "Parser"
+
+    role: str = 'assistance'
+
+    def __init__(
+        self,
+        content: str,
+        tool_call_id: str,
+        raw_content: dict = None,
+        *args, **kwargs
+    ):
+        super().__init__(
+            content=content,
+            tool_call_id=tool_call_id,
+            *args,
+            **kwargs
+        )
+        self.raw_content = raw_content if raw_content else dict()
+
+    def get_field(self, field: str, default=None) -> Any:
+        return self.raw_content.get(field, default)

@@ -4,10 +4,12 @@
 #
 import glob
 import logging
-from typing import Any
 
 import faiss
+import pypdf.errors
 import tqdm
+
+from typing import Any
 from langchain_community.docstore import InMemoryDocstore
 from langchain_community.document_loaders import PyPDFLoader, PythonLoader
 from langchain_community.embeddings import GPT4AllEmbeddings
@@ -47,7 +49,7 @@ def load_vector_store(db_dir, embedding: str | Any = None):
 
 def build_vectorstore(data_dir, db_dir):
     logger.info("Initialize embedding model")
-    embedding_model = GPT4AllEmbeddings()
+    embedding_model = load_embedding_model()
     embed_dim = len(embedding_model.embed_query('hello'))
 
     logger.info('Create index')
@@ -62,23 +64,31 @@ def build_vectorstore(data_dir, db_dir):
     )
 
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100,
+        chunk_size=2000,
+        chunk_overlap=200,
     )
 
-    pdf_files = glob.glob(fr'{data_dir}/*.pdf')
+    pdf_files = glob.glob(fr'{data_dir}/**/*.pdf')
 
+    all_docs = []
     batch_size = 20
     for i in tqdm.tqdm(range(0, len(pdf_files), batch_size)):
         batch_files = pdf_files[i:i + batch_size]
         batch_docs = []
         for file in tqdm.tqdm(batch_files):
-            loader = PyPDFLoader(file)
-            docs = loader.lazy_load()
-            batch_docs.extend(docs)
+            try:
+                loader = PyPDFLoader(file)
+                docs = loader.lazy_load()
+                batch_docs.extend(docs)
+            except Exception:
+                continue
+
+        all_docs.extend(batch_docs)
 
         chunks = text_splitter.split_documents(batch_docs)
         vector_store.add_documents(chunks)
+
+    print(len(all_docs))
 
     logger.info(f"Save vectorstore to {db_dir}")
     vector_store.save_local(folder_path=db_dir)
@@ -97,3 +107,10 @@ def extend_vectorstore_py_file(db_dir, file):
 
     logger.info(f"Save vectorstore to {db_dir}")
     vector_store.save_local(folder_path=db_dir)
+
+
+if __name__ == '__main__':
+    build_vectorstore(
+        'data/interm/lakehead_scraped',
+        'vectorstores/lakehead/faiss_1000'
+    )
