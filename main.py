@@ -2,9 +2,7 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import hydra
 import logging
-from omegaconf import DictConfig
 
 from src.builder import Builder
 from src.utils import find_load_env
@@ -15,37 +13,40 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-@hydra.main(config_path="configs", config_name="job", version_base=None)
-def main(cfg: DictConfig):
-    planner_agent = Builder.build_agent(agent_config=cfg.agent.planner)
-    retriever_agent = Builder.build_agent(agent_config=cfg.agent.retriever)
-    # coding_agent = Builder.build_agent(agent_config=cfg.agent.coding)
-    # critic_agent = Builder.build_agent(agent_config=cfg.agent.critic)
-    # verification_agent = Builder.build_agent(agent_config=cfg.agent.verification)
-    # user_proxy_agent = Builder.build_agent(agent_config=cfg.agent.user)
-    #
-    # graph = Builder.build_graph(
-    #     nodes=(
-    #         planner_agent, retriever_agent, coding_agent,
-    #         critic_agent, verification_agent, user_proxy_agent),
-    #     graph_config=cfg.graph
-    # )
-
-    graph = Builder.build_graph(
-        nodes=[
-            planner_agent,
-            retriever_agent
-        ],
-        graph_config=cfg.graph
+def main():
+    chat = Builder.build(
+        type='agent',
+        config={
+            'name': 'retriever',
+            'model_name': 'openai/gpt-4o-mini',  # TODO: can change
+            'template_file': 'templates/prompt/general/retriever.yaml',   # TODO: finetune system prompt
+            'tool_schemas': [
+                {
+                    'type': 'tool',
+                    'name': 'retrieve_query',
+                    'tool_kwargs': {
+                        "db_path": "vectorstores/lakehead/faiss_v.1",  # NOTE: keep it for testing
+                        "embedding_name": "all-MiniLM-L6-v2.gguf2.f16.gguf",  # NOTE: keep it for testing
+                        "n_docs": 4  # TODO: can change
+                    }
+                },
+            ]
+        }
     )
 
-    graph.init_graph()
+    # config = {'configurable': {'thread_id': 'single_user'}}
+    while True:
+        question = input('Enter your question (q to quit): ')
+        if question == 'q':
+            print('Goodbye. Have a nice day.')
+            break
 
-    graph.invoke('Hi')
+        response = chat.invoke(question)
 
-    graph.invoke("Execute file configs/agents/critic.yaml")
+        print(response.content or response.tool_calls)
 
-    graph.print_conversation()
+    # to see full conversation to inspect insights
+    chat.print_conversation()
 
 
 if __name__ == '__main__':
