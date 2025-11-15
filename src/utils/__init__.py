@@ -4,12 +4,6 @@
 #
 import glob
 
-from src.utils.types import *
-
-from src.utils.constants import *
-from src.utils.exception import *
-from src.utils.file import *
-
 
 def find_load_env():
     from dotenv import load_dotenv
@@ -31,3 +25,13 @@ def find_load_env():
             continue
     else:
         print('No any "*.env" file to load environment variables. Let create a file and export')
+
+
+def scan_module(module: dict) -> list:
+    import inspect
+
+    return [
+        name
+        for name, obj in module.items()
+        if inspect.isclass(obj) or inspect.isfunction(obj)
+    ]

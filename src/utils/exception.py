@@ -2,23 +2,9 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+from src.utils import scan_module
 
-__all__ = [
-    "NotCompletedError",
-    "ScriptWithError",
-    "BreakGraphOperation",
-    "NoRenderImages",
-    "ExceedFixErrorAttempts",
-    "NotSupportUserRefinement",
-    "NoConnectionEdges",
-    "UserTerminated",
-    "NotReturnStructuredOutput",
-    "ReinvokeChat",
-    "CanNotParseJsonString",
-    "NotOverrideError",
-    "NotFoundSchema",
-    "NoNodeError"
-]
+__all__ = scan_module(globals())
 
 
 class NoConnectionEdges(Exception):
@@ -78,4 +64,8 @@ class NotFoundSchema(KeyError):
 
 
 class NoNodeError(ValueError):
+    ...
+
+
+class NotFoundTool(Exception):
     ...
