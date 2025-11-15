@@ -2,6 +2,10 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+"""The ReAct agent inherits the base agent with additional re-look to check
+if it can provide the final response
+"""
+
 from __future__ import annotations
 
 import logging
@@ -30,6 +34,12 @@ logger = logging.getLogger(__name__)
 class LoopReactAgent(BaseAgent, Generic[StateT, ContextT, OutputT, ToolSchema]):
     # TODO: add docs
     """"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.max_attempts = 5
+        self.num_tries = 0
 
     @override
     def _build_internal_graph(self):
@@ -69,6 +79,7 @@ class LoopReactAgent(BaseAgent, Generic[StateT, ContextT, OutputT, ToolSchema]):
             name=self.name
         )
 
+    @add_note_docstring("This function used to decide continue or finish a call")
     def observe_and_decide(
         self,
         state: Union[StateT],
@@ -85,8 +96,10 @@ class LoopReactAgent(BaseAgent, Generic[StateT, ContextT, OutputT, ToolSchema]):
             raise ValueError(
                 f"Expected AIMessage in output edges, but got {type(last_message).__name__}"
             )
-        # If there is no tool call, then we finish
-        if not last_message.tool_calls:
+        # If there is no tool call or limit attempts, then we finish
+        if not last_message.tool_calls and self.num_tries < self.max_attempts:
+            self.num_tries = 0
             return "end"
 
+        self.num_tries += 1
         return 'tool_call'

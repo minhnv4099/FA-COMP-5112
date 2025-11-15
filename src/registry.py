@@ -2,13 +2,18 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import importlib
+from __future__ import annotations
+
 import logging
+import importlib
 from collections import defaultdict
-from typing import Union
+from typing import Union, TYPE_CHECKING
 
 from src.types import ClassLike, SchemaLike, OmegaDict
-from src.utils.exception import NotFoundSchema
+from src.utils.exception import NotFoundSchema, NotFoundTool
+
+if TYPE_CHECKING:
+    from src.tool.base import BaseDefinedTool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -40,24 +45,28 @@ def load_class(type: str, name: str) -> Union[ClassLike, callable]:
     return cls
 
 
-def load_tool(name: str, *args, **kwargs):
-    return load_class(type='tool', name=name)(*args, **kwargs)
+def load_tool(name: str, **kwargs) -> BaseDefinedTool:
+    try:
+        return load_class(type='tool', name=name)(**kwargs)
+    except KeyError as e:
+        raise NotFoundTool
 
 
-def fetch_registered(metadata: Union[dict]) -> Union[None, SchemaLike]:
+def fetch_registered(metadata: Union[OmegaDict]) -> Union[None, SchemaLike]:
     if metadata is None:
         return None
 
     if not isinstance(metadata, OmegaDict):
-        raise ValueError(f"metadata must be 'dict' but got '{type(metadata)}'")
+        raise ValueError(f"metadata must be like-dict, but got '{type(metadata)}'")
 
     try:
         if metadata['type'] == 'tool':
-            return load_tool(name=metadata['name'])
+            return load_tool(name=metadata['name'], **metadata.get('tool_kwargs', dict()))
 
         return load_class(type=metadata['type'], name=metadata['name'])
 
     except KeyError as e:
+        # TODO: can change exception
         raise NotFoundSchema(e.args)
 
 
@@ -77,7 +86,12 @@ class Register:
             Unique name of class in ``type`` list. MUST be lowercase
     """
 
-    def __init__(self, type: str, module_path: str, name: str):
+    def __init__(
+        self,
+        type: str,
+        module_path: str,
+        name: Union[str, list[str]]
+    ):
         self.module_path = module_path.lower()
         self.type = type.lower()
         self.name = name.lower()
@@ -87,7 +101,7 @@ class Register:
 
         if self.name in name_to_class:
             raise ValueError(
-                f"'{self.name}' exists. Existing names: {', '.join([f'{_name}' for _name in name_to_class])}")
+                f"'{self.name}' exists. Existing names in type '{self.type}': {', '.join([f'{_name}' for _name in name_to_class])}")
         else:
             # logger.info(f"'{symbol.__name__}' has registered as '{self.type}' with path: '{symbol.__module__}'")
             ...
@@ -99,12 +113,6 @@ class Register:
         }
 
         return symbol
-
-    def _register_class(self, symbol):
-        ...
-
-    def _register_func(self, symbol):
-        ...
 
 
 class _Register(Register):

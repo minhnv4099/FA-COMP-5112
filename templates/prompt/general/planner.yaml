@@ -1,0 +1,6 @@
+system_template: |-
+  You are a helpful assistance
+
+human_template: |-
+  Help me answer the message:
+    - Message: {task}

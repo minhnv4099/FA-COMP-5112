@@ -2,6 +2,10 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+"""The chat with capability to remember the whole conversation of an unique config (thread_id)
+It only works with text, NO tool call and structured output
+"""
+
 from __future__ import annotations
 
 import logging
@@ -33,6 +37,7 @@ from src.registry import RegisterChat
 from src.types import ContextT, StateT
 from src.chat.base import BaseChatAssistance
 from src.state.base import BaseState
+from src.context.base import BaseContext
 from src.utils.decorator import add_note_docstring, must_override
 from src.utils.file import load_prompt_template_file
 
@@ -52,6 +57,9 @@ class PersistentChat(
 
     state_schema: type[StateT]
     """State schema"""
+
+    context_schema: type[ContextT]
+    """Context schema"""
 
     template_file: str
     """File containing message templates, from system to human templates. 
@@ -74,8 +82,9 @@ class PersistentChat(
     ):
         super().__init__(*args, **kwargs)
 
-        # set state schema
+        # set schema
         self.state_schema = BaseState
+        self.context_schema = BaseContext
 
         # prompt templates
         self.template_file = template_file
@@ -102,7 +111,7 @@ class PersistentChat(
         # TODO: add docs
         self.graph_builder = StateGraph[StateT, ContextT, ..., ...](
             state_schema=self.state_schema,
-            context_schema=self.state_schema,
+            context_schema=self.context_schema,
             input_schema=self.state_schema,
             output_schema=self.state_schema
         )
@@ -146,7 +155,7 @@ class PersistentChat(
     @override
     def invoke(
         self,
-        input: Union[str, PromptValue, Sequence[BaseMessage]],
+        input: Union[str, BaseMessage, Sequence[BaseMessage], PromptValue],
         config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         context: Optional[Runtime[ContextT]] = None,
@@ -156,11 +165,15 @@ class PersistentChat(
         """"""
         config = config if config else self.config
 
-        self.graph.invoke(
-            input={'messages': input},
+        chunk_generator = self.graph.stream(
+            input={'messages': input},  # type: ignore
             config=config,
-            context=context
+            context=context,
+            stream_mode='messages',
         )
+
+        for chunk in chunk_generator:
+            ...
 
         return self.get_messages(config)[-1]
 

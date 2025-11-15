@@ -11,16 +11,13 @@ from langchain_core.messages import BaseMessage, AIMessage
 
 from src.registry import RegisterNode
 from src.types import StateT, InputT, ContextT, OutputT, ToolSchema
-from src.agent.base import BaseAgent
+from src.agent.react_loop import LoopReactAgent
 
 logger = logging.getLogger(__name__)
 
 
 @RegisterNode(module_path=__name__, name='base_node')
-class BaseNode(
-    BaseAgent[StateT, ContextT, OutputT, ToolSchema],
-    Generic[StateT, ContextT, InputT, OutputT, ToolSchema],
-):
+class BaseNode(LoopReactAgent, Generic[StateT, ContextT, InputT, OutputT, ToolSchema]):
     # TODO: add docstring
     """The Base Node class"""
 
@@ -52,6 +49,7 @@ class BaseNode(
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+
         self.edges = edges
         self.input_schema = self.fetch_schema(
             schema=input_schema if input_schema else self.state_schema

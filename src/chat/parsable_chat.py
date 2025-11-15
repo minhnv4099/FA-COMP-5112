@@ -2,6 +2,14 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+"""The chat inheriting persistent chat with ability parse structured output as dict
+Example:
+    {
+        "results": <RESULT>,
+        "command": <BASH COMMAND>
+    }
+"""
+
 from __future__ import annotations
 
 import logging
@@ -15,7 +23,7 @@ from typing import (
     Optional,
     Literal
 )
-from typing_extensions import override, deprecated
+from typing_extensions import override
 
 from langgraph.types import RetryPolicy
 from langgraph.graph import StateGraph
@@ -53,15 +61,18 @@ class ParseToolCallChat(
     # TODO: add docs
     """The Tool Call Chat class"""
 
-    output_schema: list[Union[dict, OutputT]]
+    output_schema: Union[dict, OutputT]
     """The structure output the chat model should return"""
+
+    tool_schemas: list[Union[ToolSchema, dict]]
+    """Tool schema"""
 
     output_schema_as_tool: bool
     """Bind `output_schema` as tool, providing more flexibility. 
     In some cases, the output schema can be bound by ``.with_structure()``"""
 
-    tool_schemas: list[Union[ToolSchema, dict]] = None,
-    """Tool schema"""
+    schemas: list[Union[ToolSchema, dict]]
+    """The list of raw schema, used to find actual tools"""
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -70,18 +81,15 @@ class ParseToolCallChat(
         self,
         *args,
         output_schema: list[Union[OutputT, dict]] = None,
-        output_schema_as_tool: bool = True,
         tool_schemas: list[Union[ToolSchema, dict]] = None,
         **kwargs
     ):
-        super().__init__(*args, **kwargs)
-
         # output schema
         self.output_schema = output_schema
-        self.output_schema_as_tool = output_schema_as_tool
-
         # tool schema
         self.tool_schemas = tool_schemas
+
+        super().__init__(*args, **kwargs)
 
         # bind schemas to the chat model
         if self.chat_model:
@@ -93,8 +101,11 @@ class ParseToolCallChat(
     @override
     def _build_internal_graph(self):
         # TODO: consider using self-defined graph "src/base/graph.py"
-        self.graph_builder = StateGraph[StateT, ContextT, ..., ...](
-            state_schema=self.state_schema
+        self.graph_builder = StateGraph[StateT, ContextT, ..., OutputT](
+            state_schema=self.state_schema,
+            context_schema=self.context_schema,
+            input_schema=self.state_schema,
+            output_schema=self.output_schema
         )
 
         self.graph_builder.add_node(
@@ -151,31 +162,26 @@ class ParseToolCallChat(
         )
 
     @must_override
-    def _validate_schemas(self) -> list[OutputT]:
+    def _validate_schemas(self) -> list[ToolSchema]:
         """Validate output schemas to chat model"""
 
         self.tool_schemas = self._convert_to_list(seq=self.tool_schemas)
         self.output_schema = self._convert_to_list(seq=self.output_schema)
 
-        schemas = self.tool_schemas + self.output_schema
+        self.schemas = self.tool_schemas + self.output_schema
         schemas = [
-            self.fetch_schema(tool_schema)
-            for tool_schema in schemas
+            self.fetch_schema(schema)
+            for schema in self.schemas
         ]
 
         schemas = list(filter(lambda x: x, schemas))
 
         if schemas:
-            logger.warning(f"The schemas '{schemas}' are just (or treated as) tool schemas, which requires "
-                           f"'ToolMessage' after 'AIMessage' that have tool calls with associative tool_call_id.")
+            ...
+            # logger.warning(f"The schemas '{schemas}' are just (or treated as) tool schemas, which requires "
+            #                f"'ToolMessage' after 'AIMessage' that have tool calls with associative tool_call_id.")
 
         return schemas
-
-    def _convert_to_list(self, seq: Union[Any, Iterable[Any]]) -> list[Any]:
-        if seq and not isinstance(seq, OmegaList):
-            seq = [seq, ]
-
-        return seq or []
 
     def fetch_schema(
         self,
@@ -186,3 +192,9 @@ class ParseToolCallChat(
             return schema
 
         return fetch_registered(metadata=schema)
+
+    def _convert_to_list(self, seq: Union[Any, Iterable[Any]]) -> list[Any]:
+        if seq and not isinstance(seq, OmegaList):
+            seq = [seq, ]
+
+        return seq or []

@@ -2,6 +2,8 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+"""Contain args schemas for tools"""
+
 from pydantic import Field
 
 from src.registry import RegisterToolSchema
@@ -36,4 +38,10 @@ class UrlReaderArgsSchema(BaseToolSchema):
     """Use this schema when need to read content in an url"""
 
     url: str = Field(..., description='The url need to read content')
-    
+
+
+@RegisterToolSchema(module_path=__name__, name='retrieve_query_schema')
+class QueryRetrieveArgsSchema(BaseToolSchema):
+    """Use this schema when need to retrieve relevant documents from vector store aligned with the query"""
+
+    query: str = Field(..., description="The given query needing to retrieve")
