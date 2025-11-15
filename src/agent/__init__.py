@@ -5,6 +5,8 @@
 from src.utils import scan_module
 
 from src.agent.base import BaseAgent
+from src.agent.react_loop import LoopReactAgent
+
 from src.agent.coding import CodingAgent
 from src.agent.critic import CriticAgent
 from src.agent.planner import PlannerAgent
