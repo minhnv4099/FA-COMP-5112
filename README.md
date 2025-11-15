@@ -8,6 +8,12 @@ This demo works on console only and aims to test the performance of the chatbot.
 ```bash
 pip install -r requirements.txt
 ```
+
+## Provide environment variables
+Paste [OpenRouter](https://openrouter.ai) api key to [.env file](.env) 
+```yaml
+OPENROUTER_API_KEY=???
+```
 ## Usage
 ```bash
 python main.py
