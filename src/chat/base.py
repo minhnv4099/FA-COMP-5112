@@ -8,26 +8,27 @@ import os
 import logging
 from json import dumps, loads
 from json.decoder import JSONDecodeError
-from typing import Union, Generic, Any, Optional, Sequence, Iterable, TYPE_CHECKING
+from typing import (
+    Union,
+    Generic,
+    Any,
+    Optional,
+    Sequence,
+    Iterable,
+    TYPE_CHECKING
+)
 from typing_extensions import deprecated
 
 from langchain_core.prompt_values import PromptValue
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate
-)
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.utils.interactive_env import is_interactive_env
 from langchain_openai import ChatOpenAI
 
-from src.registry import RegisterChat, fetch_registered
+from src.registry import RegisterChat
 from src.supplier import PROVIDER_TO_ENV, PROVIDER_TO_BASE_URL
-from src.types import OutputT, OmegaList, SchemaLike, OmegaDict
 from src.utils.decorator import add_note_docstring, must_override
 from src.utils.exception import NotOverrideError
-from src.utils.file import load_prompt_template_file
 
 if TYPE_CHECKING:
     from langchain_core.messages import AIMessage, BaseMessage
@@ -38,10 +39,14 @@ logger = logging.getLogger(__name__)
 
 @RegisterChat(module_path=__name__, name='base_chat_v1')
 class BaseChatAssistance:
-    """The Base Chat Assistance that communicates with user via text chat (conversation)"""
+    # TODO: add docstring
+    """The Base Chat Assistance acting as an LLM"""
 
-    name: str = None
-    """Name of the agent"""
+    name: str
+    """Name of the chatbot"""
+
+    metadat: dict
+    """Metadata"""
 
     model_name: str
     """Name of LLM (e.g. ``gpt-4o``, ``gpt-4o-mini``)"""
@@ -49,19 +54,11 @@ class BaseChatAssistance:
     model_provider: str
     """Provide of used model (e.g. ``openai``, ``google``, ``openrouter``)"""
 
+    endpoint_url: str
+    """The endpoint url"""
+
     model_api_key: str
-    """API key"""
-
-    output_schema: list[Union[dict, OutputT]] | OutputT
-    """The structure output the chat model should return"""
-
-    output_schema_as_tool: bool
-    """Bind `output_schema` as tool, providing more flexibility. 
-    In some cases, the output schema can be bound by ``.with_structure()``"""
-
-    template_file: str
-    """File containing message templates, from system to human templates. 
-    That are all templates the agent used for its task"""
+    """API key. It can be load from environment variables based on provider."""
 
     num_input_tokens: int
     """Volume of input tokens passed to chat model"""
@@ -89,7 +86,7 @@ class BaseChatAssistance:
                 logger.warning(f'{comp_5112_func} are used only for "COMP-5112" project. '
                                f'Only use them in the project scope.')
 
-        if not kwargs.get('bypass_override', False):
+        if not kwargs.get('bypass_override', True):
             if missing_func:
                 raise NotOverrideError(f"[Warning] Class '{cls.__name__}' didn't override: {missing_func}")
 
@@ -97,18 +94,16 @@ class BaseChatAssistance:
         self,
         name: str = None,
         metadata: dict = None,
-        output_schema: OutputT = None,
-        output_schema_as_tool: bool = None,
         use_model: bool = True,
         model_name: str = None,
         model_provider: str = None,
         model_api_key: str = None,
         chat_model: BaseChatModel = None,
-        template_file: str = None,
         **kwargs,
     ):
+        """"""
         # metadata
-        self.name = name if name else 'base_chat'
+        self.name = name if name else self.__class__
         self.metadata = metadata
 
         # chat model
@@ -117,16 +112,6 @@ class BaseChatAssistance:
         self.model_provider = model_provider
         self.model_api_key = model_api_key
         self.chat_model = chat_model
-
-        # output schema
-        self.output_schema = output_schema
-        self.output_schema_as_tool = output_schema_as_tool
-
-        # prompt templates
-        self.template_file = template_file
-        if self.template_file:
-            self._prepare_message_templates()
-            self._prepare_chat_template()
 
         # check model
         self._check_model_provider()
@@ -142,13 +127,11 @@ class BaseChatAssistance:
         self.num_output_tokens = 0
 
         # use as middleware
-        self.opening_symbols = "-" * 60 + self.name + "-" * 60
-        self.ending_symbols = "*" * (120 + len(self.name))
+        self.opening_symbols = "-" * 60 + ' ' + self.name + ' ' + "-" * 60
+        self.ending_symbols = "*" * (122 + len(self.name))
 
         # default config for each chat, using the name
-        # NOTE: It's just for test
         self.config = RunnableConfig(
-            configurable={"thread_id": self.name},
             recursion_limit=200,
         )
 
@@ -158,15 +141,16 @@ class BaseChatAssistance:
 
     def _check_model_provider(self):
         if self.model_provider not in PROVIDER_TO_ENV:
+            supported_provider = ', '.join(filter(lambda x: x, PROVIDER_TO_ENV.keys()))
             logger.warning(
-                f"Now we only use models from provider: {', '.join(PROVIDER_TO_ENV.keys())}, but provided '{self.model_provider}'"
+                f"Now we only use models from provider: {supported_provider}, but provided '{self.model_provider}'"
                 f"Use 'openrouter', default")
 
             self.model_provider = 'openrouter'
 
     def _check_chat_model(self):
         if self.chat_model is not None:
-            logger.critical(f"Now we only accept instantiate `chat_model` from 'model_name'. Pass this value")
+            logger.critical(f"Now we only accept instantiating `chat_model` from 'model_name'. Pass this value")
 
     def _initialize_model(self):
         """Initialize model based on ``model_name``, ``model_provider``"""
@@ -178,6 +162,9 @@ class BaseChatAssistance:
         else:
             api_key = self.model_api_key
 
+        self.model_api_key = api_key
+        self.endpoint_url = base_url
+
         self.chat_model = ChatOpenAI(
             openai_api_base=base_url,
             model=self.model_name,
@@ -187,19 +174,20 @@ class BaseChatAssistance:
                 requests_per_second=0.1,
                 check_every_n_seconds=0.1,
                 max_bucket_size=10
-            )
+            ),
         )
+    @property
+    def api_key(self):
+        return self.api_key
 
-    def _convert_to_list(self, seq: Iterable[Any]) -> list[Any]:
-        if seq and not isinstance(seq, OmegaList):
-            seq = [seq, ]
-
-        return seq or []
+    @property
+    def base_url(self):
+        return self.endpoint_url
 
     @add_note_docstring(docs="Used for 'COMP-5112' project")
     def __call__(
         self,
-        input: Union[str, dict, PromptValue],
+        *args,
         **kwargs
     ):
         """The abstractive node function receives state input and returns update state
@@ -223,7 +211,7 @@ class BaseChatAssistance:
     def internal_invoke(
         self,
         input: Union[str, PromptValue, Sequence[BaseMessage]],
-        config: Optional[RunnableConfig] = None,
+        config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         stop: Optional[list[str]] = None
     ) -> AIMessage:
@@ -243,81 +231,51 @@ class BaseChatAssistance:
 
         return ai_message
 
-    @add_note_docstring('COMP-5112 project')
-    @must_override
-    def _prepare_message_templates(self, *args, **kwargs):
-        """Prepare message templates for system and human roles.
+    def invoke(
+        self,
+        input: Union[str, PromptValue, Sequence[BaseMessage]],
+        config: Optional[Union[RunnableConfig, dict]] = None,
+        *,
+        stop: Optional[list[str]] = None
+    ) -> AIMessage:
 
-        This method only works for Chat Assistance with **ONE** system prompt and **ONE** human prompt. \n
-        Override it by doing nothing if the chat has other message templates.
-        """
-
-        templates_dict = load_prompt_template_file(self.template_file)
-
-        self.system_template = SystemMessagePromptTemplate.from_template(
-            template=templates_dict.get('system_template', """"""),
-            template_format='f-string',
-        )
-        self.human_template = HumanMessagePromptTemplate.from_template(
-            template=templates_dict.get('human_template', """"""),
-            template_format='f-string',
+        return self.internal_invoke(
+            input=input,
+            config=config,
+            stop=stop
         )
 
-    @add_note_docstring('COMP-5112 project')
-    @must_override
-    def _prepare_chat_template(self, system_template=None, human_template=None) -> ChatPromptTemplate:
-        """Prepare chat template for a turn
-
-        The method works with the constraints that 1 system template followed by a human template
-        """
-
-        if system_template is None:
-            _system_template = self.system_template
-        else:
-            _system_template = system_template
-
-        self.chat_template = ChatPromptTemplate(
-            messages=[_system_template, human_template if human_template else self.human_template],
-            template_format='f-string',
-        )
-
-        return self.chat_template
-
-    @add_note_docstring('COMP-5112 project')
-    def _get_pretty_formatted_prompt(self, chat_prompt_template: ChatPromptTemplate, input: dict):
-        pretty_input = self._format_input(input=input)
-
-        return chat_prompt_template.invoke(input=pretty_input)
-
-    def _format_input(self, input: dict):
-        _inputs = dict()
-
-        for k, v in input.items():
-            _inputs[k] = self.get_pretty_prep(v)
-
-        return _inputs
-
-    @classmethod
-    def get_pretty_prep(cls, content: Any):
+    def get_pretty_prep(self, content: Any):
         try:
             if isinstance(content, str):
-                return dumps(loads(content), indent=4)
+                text = dumps(loads(
+                    self._parse_json_content(content)), indent=4
+                )
+            else:
+                text = dumps(content, indent=4)
 
-            return dumps(content, indent=4)
+            return text
 
         except (JSONDecodeError, TypeError) as e:
             return content
 
-    @classmethod
-    @deprecated('No longer useful.')
-    def create_ai_message(cls, content):
-        """Create an ai message based on content user want to view in conversation,
-        not raw content or tool call JSON block"""
+    def _parse_json_content(self, text: str):
+        """Parse the structured output from text content"""
 
-        return AIMessage(content=content)
+        import json, re
 
-    def _get_ai_message_metadata(self, ai_message: AIMessage):
-        raise NotImplementedError
+        text = text.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```[a-zA-Z]*", "", text).strip("` \n")
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+
+        if match:
+            try:
+                return json.loads(match.group())
+            except ValueError:
+                pass
+
+        return text
 
     @classmethod
     def get_conversation(cls, messages: Sequence[BaseMessage]):
@@ -332,34 +290,13 @@ class BaseChatAssistance:
         return conversation.strip()
 
     @classmethod
-    def is_list_of_strings(cls, obj):
-        return isinstance(obj, list) and all(isinstance(elem, str) for elem in obj)
-
-    @classmethod
-    def log_conversation(cls, _logger, conversation):
-        if not cls.is_list_of_strings(conversation) and isinstance(conversation, list):
+    def log_conversation(cls, _logger, conversation: Sequence[BaseMessage] | str):
+        if not isinstance(conversation, str):
             conversation = cls.get_conversation(conversation)
 
         _logger.info(
             f"🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 CONVERSATION 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵\n{conversation}")
         _logger.info(f"🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 ")
-
-    @add_note_docstring(docs="Used for 'COMP-5112' project")
-    def _extend_conversation(
-            self,
-            messages: Sequence[BaseMessage],
-            his_conversation: Optional[Sequence[BaseMessage]]
-    ):
-        """Extend the conversation, getting full one. Used when ``messages`` also contains the system prompt."""
-
-        his_conversation = his_conversation or []
-
-        if his_conversation:
-            his_conversation.extend(messages[1:])
-        else:
-            his_conversation.extend(messages)
-
-        return his_conversation
 
     def _count_tokens(self, ai_message: AIMessage):
         """Accumulate input and output tokens"""
@@ -378,7 +315,8 @@ class BaseChatAssistance:
 
         _logger.info(self._used_token_prep())
 
-    def _finish_session(self, _logger, conversation):
-        self.log_conversation(_logger, conversation)
+    def _finish_session(self, _logger, conversation=None):
+        if conversation:
+            self.log_conversation(_logger, conversation)
         _logger.info(self._used_token_prep())
         _logger.info(self.ending_symbols)
