@@ -1,6 +1,6 @@
 # COMP-5313: Chatbot Contest 
 The chatbot I used is a React-loop agent with the ability to consider the whole conversation before providing the final response.
-It has a tool what retrieve documents from vector store [lakehead/faiss_v.1](vectorstores/lakehead/faiss_v.1). 
+It has a tool that retrieves documents from vector store [lakehead/faiss_v.1](vectorstores/lakehead/faiss_v.1). 
 
 This demo works on console only and aims to test the performance of the chatbot.
 ## Preparation
