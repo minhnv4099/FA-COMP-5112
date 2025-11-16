@@ -2,19 +2,17 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+"""Base chat acts as an LLM"""
+
 from __future__ import annotations
 
 import os
 import logging
-from json import dumps, loads
-from json.decoder import JSONDecodeError
 from typing import (
     Union,
-    Generic,
     Any,
     Optional,
     Sequence,
-    Iterable,
     TYPE_CHECKING
 )
 from typing_extensions import deprecated
@@ -55,10 +53,12 @@ class BaseChatAssistance:
     """Provide of used model (e.g. ``openai``, ``google``, ``openrouter``)"""
 
     endpoint_url: str
-    """The endpoint url"""
+    """The endpoint url. Can be used to initialize chat model outside"""
 
     model_api_key: str
-    """API key. It can be load from environment variables based on provider."""
+    """API key. It can be load from environment variables based on provider.
+    Can be used to initialize chat model outside
+    """
 
     num_input_tokens: int
     """Volume of input tokens passed to chat model"""
@@ -118,7 +118,7 @@ class BaseChatAssistance:
         self._check_model_name()
         self._check_chat_model()
 
-        # initialize model + bind schema
+        # initialize model
         if self.use_model:
             self._initialize_model()
 
@@ -143,9 +143,8 @@ class BaseChatAssistance:
         if self.model_provider not in PROVIDER_TO_ENV:
             supported_provider = ', '.join(filter(lambda x: x, PROVIDER_TO_ENV.keys()))
             logger.warning(
-                f"Now we only use models from provider: {supported_provider}, but provided '{self.model_provider}'"
+                f"Now we only use models from provider: {supported_provider}, but got '{self.model_provider}'"
                 f"Use 'openrouter', default")
-
             self.model_provider = 'openrouter'
 
     def _check_chat_model(self):
@@ -155,20 +154,15 @@ class BaseChatAssistance:
     def _initialize_model(self):
         """Initialize model based on ``model_name``, ``model_provider``"""
 
-        base_url = PROVIDER_TO_BASE_URL[self.model_provider]
+        self.endpoint_url = PROVIDER_TO_BASE_URL[self.model_provider]
 
         if self.model_api_key is None:
-            api_key = os.getenv(PROVIDER_TO_ENV[self.model_provider])
-        else:
-            api_key = self.model_api_key
-
-        self.model_api_key = api_key
-        self.endpoint_url = base_url
+            self.model_api_key = os.getenv(PROVIDER_TO_ENV[self.model_provider])
 
         self.chat_model = ChatOpenAI(
-            openai_api_base=base_url,
             model=self.model_name,
-            openai_api_key=api_key,
+            openai_api_base=self.endpoint_url,  # type: ignore
+            openai_api_key=self.model_api_key,  # type: ignore
             temperature=0.7,
             rate_limiter=InMemoryRateLimiter(
                 requests_per_second=0.1,
@@ -176,9 +170,10 @@ class BaseChatAssistance:
                 max_bucket_size=10
             ),
         )
+
     @property
     def api_key(self):
-        return self.api_key
+        return self.model_api_key
 
     @property
     def base_url(self):
@@ -215,18 +210,25 @@ class BaseChatAssistance:
         *,
         stop: Optional[list[str]] = None
     ) -> AIMessage:
-        """Invoke chat model with input.
+        """Internally invoke chat model with input to get response.
+        Present exposing this method outside, only called by other operations/
+
+        Args:
+            input:
+                Input fed to the chat model
+            config:
+                Config to separate streams of conversation. It's only useful when using with persistent chat.
+            stop:
+                The sequence of string the model needs to stop generating if encounter
 
         Returns:
-            AIMessage
+            The generated response.
         """
-
         ai_message = self.chat_model.invoke(
             input=input,
             config=config if config else self.config,
             stop=stop
         )
-
         self._count_tokens(ai_message)
 
         return ai_message
@@ -238,53 +240,31 @@ class BaseChatAssistance:
         *,
         stop: Optional[list[str]] = None
     ) -> AIMessage:
+        """The invocation function exposed to user
 
+        Args:
+            input:
+                Input fed to the chat model
+            config:
+                Config to separate streams of conversation. It's only useful when using with persistent chat.
+            stop:
+                The sequence of string the model needs to stop generating if encounter
+
+        Returns:
+            The generated response.
+        """
         return self.internal_invoke(
             input=input,
             config=config,
             stop=stop
         )
 
-    def get_pretty_prep(self, content: Any):
-        try:
-            if isinstance(content, str):
-                text = dumps(loads(
-                    self._parse_json_content(content)), indent=4
-                )
-            else:
-                text = dumps(content, indent=4)
-
-            return text
-
-        except (JSONDecodeError, TypeError) as e:
-            return content
-
-    def _parse_json_content(self, text: str):
-        """Parse the structured output from text content"""
-
-        import json, re
-
-        text = text.strip()
-        if text.startswith("```"):
-            text = re.sub(r"^```[a-zA-Z]*", "", text).strip("` \n")
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-
-        if match:
-            try:
-                return json.loads(match.group())
-            except ValueError:
-                pass
-
-        return text
-
     @classmethod
     def get_conversation(cls, messages: Sequence[BaseMessage]):
         conversation = "🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶\n"
-
         for m in messages:
             conversation += m.pretty_repr(is_interactive_env())
             conversation += '\n'
-
         conversation += '🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 ' + '\n'
 
         return conversation.strip()
@@ -300,19 +280,16 @@ class BaseChatAssistance:
 
     def _count_tokens(self, ai_message: AIMessage):
         """Accumulate input and output tokens"""
-
         usage_metadata = ai_message.usage_metadata
         self.num_input_tokens += usage_metadata['input_tokens']
         self.num_output_tokens += usage_metadata['output_tokens']
 
     def _used_token_prep(self):
         """Get a string describing input and output token usage"""
-
         return f'Input tokens: {self.num_input_tokens}, Output tokens: {self.num_output_tokens}'
 
     def _print_used_tokens(self, _logger):
         """Log input and output token usage"""
-
         _logger.info(self._used_token_prep())
 
     def _finish_session(self, _logger, conversation=None):

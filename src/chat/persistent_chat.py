@@ -34,7 +34,7 @@ from langgraph.runtime import Runtime
 from langgraph.checkpoint.memory import InMemorySaver
 
 from src.registry import RegisterChat
-from src.types import ContextT, StateT
+from src.types import ContextT, StateT, OutputT, InputT
 from src.chat.base import BaseChatAssistance
 from src.state.base import BaseState
 from src.context.base import BaseContext
@@ -42,7 +42,7 @@ from src.utils.decorator import add_note_docstring, must_override
 from src.utils.file import load_prompt_template_file
 
 if TYPE_CHECKING:
-    ...
+    from langgraph.graph.state import CompiledStateGraph
 
 logger = logging.getLogger(__name__)
 
@@ -50,16 +50,22 @@ logger = logging.getLogger(__name__)
 @RegisterChat(module_path=__name__, name='persistent_chat')
 class PersistentChat(
     BaseChatAssistance,
-    Generic[StateT, ContextT],
+    Generic[StateT, ContextT, OutputT],
     bypass_override=True, show_5112=False
 ):
     """The Persistent Chat class"""
+
+    graph: CompiledStateGraph
+    """The internal graph"""
 
     state_schema: type[StateT]
     """State schema"""
 
     context_schema: type[ContextT]
     """Context schema"""
+
+    output_schema: Union[dict, OutputT]
+    """The output state for the internal graph"""
 
     template_file: str
     """File containing message templates, from system to human templates. 
@@ -77,21 +83,20 @@ class PersistentChat(
     def __init__(
         self,
         template_file: str = None,
+        output_schema: Union[OutputT, dict] = None,
         *args,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
 
-        # set schema
+        # set default schema as general persistent chat
         self.state_schema = BaseState
         self.context_schema = BaseContext
 
-        # prompt templates
-        self.template_file = template_file
-        if self.template_file:
-            self._prepare_message_templates()
-            self._prepare_chat_template()
+        # output schema
+        self.output_schema = output_schema if output_schema else self.state_schema
 
+        # override config from super class, adding configurable
         self.config: RunnableConfig = RunnableConfig(
             recursion_limit=200,
             configurable={
@@ -100,6 +105,12 @@ class PersistentChat(
         )
 
         self._build_internal_graph()
+
+        # prompt templates
+        self.template_file = template_file
+        if self.template_file:
+            self._prepare_message_templates()
+            self._prepare_chat_template()
 
         self._set_system_behavior(
             config=self.config,
@@ -113,7 +124,7 @@ class PersistentChat(
             state_schema=self.state_schema,
             context_schema=self.context_schema,
             input_schema=self.state_schema,
-            output_schema=self.state_schema
+            output_schema=self.output_schema
         )
 
         self.graph_builder.add_node(
@@ -136,15 +147,26 @@ class PersistentChat(
     @add_note_docstring('A single node of internal graph')
     def model_call(
         self,
-        state: Any,
+        state: StateT,
         config: Optional[RunnableConfig] = None,
         *,
         runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ):
+    ) -> dict[str, OutputT]:
         # TODO: add docs
-        """"""
-        # logger.info(f"Number of messages: {len(state['messages'])}")
+        """An entrypoint node in the graph, invoking chat model
+
+        Args:
+            state:
+                Current state of graph execution
+            config:
+                Used config to differ user/thread, making a conversation for each one
+            runtime:
+                Runtime variable giving access to context
+
+        Returns:
+            Updates state will be merged into the state schema
+        """
         response = self.internal_invoke(
             input=state['messages'],
             config=config
@@ -161,10 +183,22 @@ class PersistentChat(
         context: Optional[Runtime[ContextT]] = None,
         **kwargs,
     ) -> BaseMessage:
-        # TODO: add docs
-        """"""
-        config = config if config else self.config
+        """Exposing invoke function to outside
 
+        Args:
+            input:
+                A message or list of messages. It is merged with the latest state before actually being passed to chat model.
+            config:
+                Config to set thread
+            context:
+                Context information
+
+        Returns:
+            The last message of the conversation. It can be ToolMessage, AIMessage, ParserMessage
+
+        """
+        config = config if config else self.config
+        # using stream technique
         chunk_generator = self.graph.stream(
             input={'messages': input},  # type: ignore
             config=config,
@@ -172,6 +206,7 @@ class PersistentChat(
             stream_mode='messages',
         )
 
+        # iterate chunks to get all messages
         for chunk in chunk_generator:
             ...
 
@@ -185,7 +220,6 @@ class PersistentChat(
         This method only works for Chat Assistance with **ONE** system prompt and **ONE** human prompt. \n
         Override it by doing nothing if the chat has other message templates.
         """
-
         templates_dict = load_prompt_template_file(self.template_file)
 
         self.system_prompt = SystemMessage(
@@ -203,7 +237,6 @@ class PersistentChat(
 
         The method works with the constraints that 1 system template followed by a human template
         """
-
         if system_template is None:
             _system_template = self.system_prompt
         else:
@@ -221,6 +254,7 @@ class PersistentChat(
         config: Optional[Union[RunnableConfig, dict]],
         system_prompt: Optional[Union[SystemMessage, str]] = None
     ):
+        """Set behavior for each chat with different config"""
         if not system_prompt:
             system_prompt = SystemMessage(content="You are a very helpful assistance.")
         elif isinstance(system_prompt, str):
@@ -235,7 +269,7 @@ class PersistentChat(
 
     def put_state(
         self,
-        config: Optional[Union[RunnableConfig, dict]],
+        config: Union[RunnableConfig, dict],
         values: dict
     ):
         self.graph.update_state(

@@ -2,7 +2,7 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-"""The ReAct agent inherits the base agent with additional re-look to check
+"""The React agent inherits the base agent with additional re-look to check
 if it can provide the final response
 """
 
@@ -56,7 +56,6 @@ class LoopReactAgent(BaseAgent, Generic[StateT, ContextT, OutputT, ToolSchema]):
             action=self.model_call,
             metadata=None
         )
-
         self.graph_builder.add_node(
             node='tool_call',
             action=self.tool_call,
@@ -88,15 +87,17 @@ class LoopReactAgent(BaseAgent, Generic[StateT, ContextT, OutputT, ToolSchema]):
         config: Optional[RunnableConfig] = None,
         **kwargs
     ) -> Literal['tool_call', 'end']:
-        # TODO: add docs
-        """"""
+        """Using ``state``, ``runtime``, ``config`` to decide whether continue with tool call or end. \n
+        It inspects the last AI message after executing tool and passing Tool Message back to conversation.\n
+        This illustrates react agent loop with the capability to iteratively consider if the final answer is ready to flush.
+        """
         last_message = state['messages'][-1]
 
         if not isinstance(last_message, AIMessage):
             raise ValueError(
                 f"Expected AIMessage in output edges, but got {type(last_message).__name__}"
             )
-        # If there is no tool call or limit attempts, then we finish
+        # If there is no tool call or reach attempt limits, finish
         if not last_message.tool_calls and self.num_tries < self.max_attempts:
             self.num_tries = 0
             return "end"
