@@ -13,7 +13,8 @@ Example:
 from __future__ import annotations
 
 import logging
-
+from json import dumps, loads
+from json.decoder import JSONDecodeError
 from typing import (
     Union,
     Any,
@@ -42,7 +43,7 @@ from src.types import (
 )
 from src.chat import PersistentChat
 from src.message.parsed_tool_call import ParsedTollCallMessage
-from src.utils.decorator import add_note_docstring, must_override
+from src.utils.decorator import must_override, add_note_docstring
 
 if TYPE_CHECKING:
     from langgraph.runtime import Runtime
@@ -54,25 +55,15 @@ logger = logging.getLogger(__name__)
 
 @RegisterChat(module_path=__name__, name='tool_call_chat')
 class ParseToolCallChat(
-    PersistentChat[StateT, ContextT],
+    PersistentChat[StateT, ContextT, OutputT],
     Generic[StateT, ContextT, OutputT, ToolSchema],
     bypass_override=True
 ):
     # TODO: add docs
     """The Tool Call Chat class"""
 
-    output_schema: Union[dict, OutputT]
-    """The structure output the chat model should return"""
-
     tool_schemas: list[Union[ToolSchema, dict]]
-    """Tool schema"""
-
-    output_schema_as_tool: bool
-    """Bind `output_schema` as tool, providing more flexibility. 
-    In some cases, the output schema can be bound by ``.with_structure()``"""
-
-    schemas: list[Union[ToolSchema, dict]]
-    """The list of raw schema, used to find actual tools"""
+    """Tool schemas including output schema"""
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -80,13 +71,10 @@ class ParseToolCallChat(
     def __init__(
         self,
         *args,
-        output_schema: list[Union[OutputT, dict]] = None,
         tool_schemas: list[Union[ToolSchema, dict]] = None,
         **kwargs
     ):
-        # output schema
-        self.output_schema = output_schema
-        # tool schema
+        # tool schemas
         self.tool_schemas = tool_schemas
 
         super().__init__(*args, **kwargs)
@@ -139,7 +127,7 @@ class ParseToolCallChat(
         **kwargs
     ) -> dict[Literal['messages'], Any]:
         # TODO: add docs
-        """"""
+        """A node handling tool calls in last messages. To execute tool or parse args as structured output"""
         last_ai_message = state['messages'][-1]
         parser_messages = [
             self._internal_tool_call(tool_call=tool_call)
@@ -153,29 +141,62 @@ class ParseToolCallChat(
         tool_call: ToolCall,
         **kwargs,
     ) -> ParsedTollCallMessage:
-        """Return dict result with items as args in tool_call. It acts as structured output but use tool call mechanism"""
+        """The actual handler tool call. This chat class just parses args of tool call into structure output
 
+        Args:
+            tool_call:
+                Contains information about the tool
+
+        Returns:
+            ParsedTollCallMessage subclass of ToolMessage whose content is args in ``tool_call``
+        """
         return ParsedTollCallMessage(
-            content=self.get_pretty_prep(tool_call['args']),
             raw_content=tool_call['args'],
+            content=self.get_pretty_prep(tool_call['args']),
             tool_call_id=tool_call['id'],
         )
 
+    def get_pretty_prep(self, content: Any):
+        """Try to get pretty content"""
+        try:
+            if isinstance(content, str):
+                text = dumps(loads(
+                    self._parse_json_content(content)), indent=4
+                )
+            else:
+                text = dumps(content, indent=4)
+            return text
+        except (JSONDecodeError, TypeError) as e:
+            return content
+
+    def _parse_json_content(self, text: str):
+        """Parse the structured output from text content"""
+        import json, re
+
+        text = text.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```[a-zA-Z]*", "", text).strip("` \n")
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except ValueError:
+                pass
+
+        return text
     @must_override
     def _validate_schemas(self) -> list[ToolSchema]:
         """Validate output schemas to chat model"""
-
         self.tool_schemas = self._convert_to_list(seq=self.tool_schemas)
-        self.output_schema = self._convert_to_list(seq=self.output_schema)
-
-        self.schemas = self.tool_schemas + self.output_schema
+        # get all schemas, do matter output schema and tool schema
+        # let model know schemas
         schemas = [
             self.fetch_schema(schema)
-            for schema in self.schemas
+            for schema in self.tool_schemas
         ]
 
+        # filter none schema
         schemas = list(filter(lambda x: x, schemas))
-
         if schemas:
             ...
             # logger.warning(f"The schemas '{schemas}' are just (or treated as) tool schemas, which requires "
@@ -187,7 +208,6 @@ class ParseToolCallChat(
         self,
         schema: Union[dict, SchemaLike]
     ) -> Union[None, SchemaLike]:
-
         if not isinstance(schema, OmegaDict):
             return schema
 

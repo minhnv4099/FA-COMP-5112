@@ -39,6 +39,7 @@ class BaseAgent(
     # TODO: add docs
     """The Base Agent class using single system prompt and human template and being able to execute tools.\n
     However, just execute tools one once (no persistence)"""
+
     def __init_subclass__(cls):
         ...
 
@@ -61,13 +62,12 @@ class BaseAgent(
         try:
             tool = self.tools[tool_call['name']]
             return tool.invoke(input=tool_call)
-
         except NotFoundTool as e:
             return super()._internal_tool_call(tool_call)
 
     def _get_tool_from_schemas(self) -> dict[str, BaseDefinedTool]:
         actual_tools = dict()
-        for schema in self.schemas:
+        for schema in self.tool_schemas:
             if schema['type'] == 'tool':
                 actual_tools[schema['name']] = load_tool(name=schema['name'], **schema['tool_kwargs'])
 
