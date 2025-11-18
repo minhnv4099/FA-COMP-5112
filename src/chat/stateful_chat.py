@@ -14,49 +14,55 @@ from typing import (
     Sequence,
     Optional,
     TYPE_CHECKING,
-    Any,
     Generic,
 )
 from typing_extensions import override
 
-from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.prompt_values import PromptValue
 from langchain_core.runnables import RunnableConfig
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    HumanMessagePromptTemplate,
-)
 
+from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
 from langgraph.graph import StateGraph
 from langgraph.graph import END, START
-from langgraph.types import StateSnapshot, RetryPolicy
+from langgraph.types import RetryPolicy
 from langgraph.runtime import Runtime
-from langgraph.checkpoint.memory import InMemorySaver
 
 from src.registry import RegisterChat
-from src.types import ContextT, StateT, OutputT, InputT
-from src.chat.base import BaseChatAssistance
+from src.types import ContextT, StateT, OutputT, ToolSchema
+from src.chat.mixin import GraphBasedMixin, StatefulChatMixin
+from src.chat.base import BaseChat
+from src.chat.tool_call_chat import ToolCallGenerateChat, ToolCallExecuteChat
 from src.state.base import BaseState
 from src.context.base import BaseContext
-from src.utils.decorator import add_note_docstring, must_override
-from src.utils.file import load_prompt_template_file
+from src.utils.decorator import add_note_docstring
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
+    from langgraph.checkpoint.memory import BaseCheckpointSaver
 
 logger = logging.getLogger(__name__)
 
 
-@RegisterChat(module_path=__name__, name='persistent_chat')
-class PersistentChat(
-    BaseChatAssistance,
+@RegisterChat(module_path=__name__, name='stateful_chat')
+class StatefulChat(
+    StatefulChatMixin,
+    GraphBasedMixin,
+    BaseChat,
     Generic[StateT, ContextT, OutputT],
     bypass_override=True, show_5112=False
 ):
-    """The Persistent Chat class"""
+    """The Stateful chat class can retain the conversation"""
+
+    config: Union[RunnableConfig, None]
+    """Config containing ``thread_id``"""
 
     graph: CompiledStateGraph
     """The internal graph"""
+
+    checkpointer: Union[BaseCheckpointSaver | None | bool]
+    """Checkpointer memory to save state during the program.
+    If None, clear state after each invocation.
+    """
 
     state_schema: type[StateT]
     """State schema"""
@@ -67,22 +73,11 @@ class PersistentChat(
     output_schema: Union[dict, OutputT]
     """The output state for the internal graph"""
 
-    template_file: str
-    """File containing message templates, from system to human templates. 
-    That are all templates the agent used for its task"""
-
-    system_prompt: SystemMessage = None
-    """System prompt"""
-
-    human_template: HumanMessagePromptTemplate = None
-    """Human template"""
-
     def __init_subclass__(cls, **kwargs):
         ...
 
     def __init__(
         self,
-        template_file: str = None,
         output_schema: Union[OutputT, dict] = None,
         *args,
         **kwargs
@@ -96,30 +91,18 @@ class PersistentChat(
         # output schema
         self.output_schema = output_schema if output_schema else self.state_schema
 
-        # override config from super class, adding configurable
-        self.config: RunnableConfig = RunnableConfig(
-            recursion_limit=200,
-            configurable={
-                'thread_id': self.name
-            }
-        )
-
+        self._initialize_config()
+        self._initialize_checkpointer()
         self._build_internal_graph()
-
-        # prompt templates
-        self.template_file = template_file
-        if self.template_file:
-            self._prepare_message_templates()
-            self._prepare_chat_template()
 
         self._set_system_behavior(
             config=self.config,
-            system_prompt=self.system_prompt
+            system_prompt=self.system_template
         )
 
+    @override
     def _build_internal_graph(self):
         # TODO: consider using self-defined graph "src/base/graph.py"
-        # TODO: add docs
         self.graph_builder = StateGraph[StateT, ContextT, ..., ...](
             state_schema=self.state_schema,
             context_schema=self.context_schema,
@@ -140,7 +123,7 @@ class PersistentChat(
         self.graph_builder.add_edge('model_call', END)
 
         self.graph = self.graph_builder.compile(
-            checkpointer=InMemorySaver(),
+            checkpointer=self.checkpointer,
             name=self.name
         )
 
@@ -152,8 +135,7 @@ class PersistentChat(
         *,
         runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> dict[str, OutputT]:
-        # TODO: add docs
+    ) -> dict:
         """An entrypoint node in the graph, invoking chat model
 
         Args:
@@ -197,58 +179,20 @@ class PersistentChat(
             The last message of the conversation. It can be ToolMessage, AIMessage, ParserMessage
 
         """
+        if len(input) == 0:
+            return AIMessage(content='Error: Input must have at least 1 token')
+
         config = config if config else self.config
         # using stream technique
-        chunk_generator = self.graph.stream(
+        output = self.graph.invoke(
             input={'messages': input},  # type: ignore
             config=config,
             context=context,
-            stream_mode='messages',
         )
 
-        # iterate chunks to get all messages
-        for chunk in chunk_generator:
-            ...
+        return output['messages'][-1]
 
-        return self.get_messages(config)[-1]
-
-    @add_note_docstring('COMP-5112 project')
-    @must_override
-    def _prepare_message_templates(self, *args, **kwargs):
-        """Prepare message templates for system and human roles.
-
-        This method only works for Chat Assistance with **ONE** system prompt and **ONE** human prompt. \n
-        Override it by doing nothing if the chat has other message templates.
-        """
-        templates_dict = load_prompt_template_file(self.template_file)
-
-        self.system_prompt = SystemMessage(
-            content=templates_dict.get('system_template', """"""),
-        )
-        self.human_template = HumanMessagePromptTemplate.from_template(
-            template=templates_dict.get('human_template', """"""),
-            template_format='f-string',
-        )
-
-    @add_note_docstring('COMP-5112 project')
-    @must_override
-    def _prepare_chat_template(self, system_template=None, human_template=None) -> ChatPromptTemplate:
-        """Prepare chat template for a turn
-
-        The method works with the constraints that 1 system template followed by a human template
-        """
-        if system_template is None:
-            _system_template = self.system_prompt
-        else:
-            _system_template = system_template
-
-        self.chat_template = ChatPromptTemplate(
-            messages=[_system_template, human_template if human_template else self.human_template],
-            template_format='f-string',
-        )
-
-        return self.chat_template
-
+    @add_note_docstring("Can consider put in Mixin")
     def _set_system_behavior(
         self,
         config: Optional[Union[RunnableConfig, dict]],
@@ -267,6 +211,7 @@ class PersistentChat(
             }
         )
 
+    @add_note_docstring("Can consider put in Mixin")
     def put_state(
         self,
         config: Union[RunnableConfig, dict],
@@ -277,21 +222,78 @@ class PersistentChat(
             values=values
         )
 
-    def get_state(
-        self,
-        config: Optional[Union[RunnableConfig, dict]] = None
-    ) -> StateSnapshot:
-        return self.graph.get_state(config if config else self.config)
 
-    def get_messages(
-        self,
-        config: Optional[Union[RunnableConfig, dict]] = None
-    ) -> list[BaseMessage]:
-        return self.get_state(config).values.get('messages', [])
+@RegisterChat(module_path=__name__, name='tool_call_generate_stateful_chat')
+class ToolCallGenerateStatefulChat(
+    StatefulChat,
+    StatefulChatMixin,
+    GraphBasedMixin,
+    ToolCallGenerateChat,
+    Generic[StateT, ContextT, OutputT, ToolSchema]
+):
+    """The Stateful chat can generate tool call"""
 
-    def print_conversation(
+    @override
+    def _build_internal_graph(self):
+        # TODO: consider using self-defined graph "src/base/graph.py"
+        self.graph_builder = StateGraph[StateT, ContextT, ..., OutputT](
+            state_schema=self.state_schema,
+            context_schema=self.context_schema,
+            input_schema=self.state_schema,
+            output_schema=self.output_schema
+        )
+
+        self.graph_builder.add_node(
+            node='model_call',
+            action=self.model_call,
+            retry_policy=RetryPolicy(),
+            metadata={
+                'description': 'Actually call chat model'
+            },
+        )
+
+        self.graph_builder.add_node(
+            node='tool_call',
+            action=self.tool_call,
+            metadata={
+                'description': ''
+            },
+        )
+
+        self.graph_builder.add_edge(START, 'model_call')
+        self.graph_builder.add_edge('model_call', 'tool_call')
+        self.graph_builder.add_edge('tool_call', END)
+
+        self.graph = self.graph_builder.compile(
+            checkpointer=self.checkpointer,
+            name=self.name
+        )
+
+    def tool_call(
         self,
-        config: Optional[Union[RunnableConfig, dict]] = None
-    ):
-        for m in self.get_messages(config):
-            m.pretty_print()
+        state: Union[StateT],
+        config: Optional[RunnableConfig] = None,
+        *,
+        runtime: Optional[Runtime[ContextT]] = None,
+        **kwargs
+    ) -> dict:
+        """A node handling tool calls in last messages. To execute tool or parse args as structured output"""
+        last_ai_message = state['messages'][-1]
+        parser_messages = [
+            self._internal_tool_call(tool_call=tool_call)
+            for tool_call in last_ai_message.tool_calls
+        ]
+
+        return {'messages': parser_messages}
+
+
+@RegisterChat(module_path=__name__, name='tool_call_execute_stateful_chat')
+class ToolCallExecuteStatefulChat(
+    ToolCallGenerateStatefulChat,
+    StatefulChat,
+    StatefulChatMixin,
+    GraphBasedMixin,
+    ToolCallExecuteChat,
+    Generic[StateT, ContextT, OutputT, ToolSchema]
+):
+    """The Stateful chat can execute tool"""
