@@ -16,12 +16,12 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import AIMessage
 from langgraph.graph import StateGraph
 from langgraph.graph.state import END, START
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.runtime import Runtime
 
 from src.registry import RegisterAgent
 from src.types import StateT, ContextT, OutputT, ToolSchema
-from src.agent.base import BaseAgent
+from src.chat.mixin import NonStatefulChatMixin
+from src.chat.stateful_chat import ToolCallExecuteStatefulChat
 from src.utils.decorator import add_note_docstring
 
 if TYPE_CHECKING:
@@ -31,7 +31,11 @@ logger = logging.getLogger(__name__)
 
 
 @RegisterAgent(module_path=__name__, name='react_agent')
-class LoopReactAgent(BaseAgent, Generic[StateT, ContextT, OutputT, ToolSchema]):
+class LoopReactAgent(
+    NonStatefulChatMixin,
+    ToolCallExecuteStatefulChat,
+    Generic[StateT, ContextT, OutputT, ToolSchema]
+):
     # TODO: add docs
     """"""
 
@@ -74,7 +78,7 @@ class LoopReactAgent(BaseAgent, Generic[StateT, ContextT, OutputT, ToolSchema]):
         self.graph_builder.add_edge('tool_call', 'model_call')
 
         self.graph = self.graph_builder.compile(
-            checkpointer=InMemorySaver(),
+            checkpointer=self.checkpointer,
             name=self.name
         )
 
@@ -92,7 +96,6 @@ class LoopReactAgent(BaseAgent, Generic[StateT, ContextT, OutputT, ToolSchema]):
         This illustrates react agent loop with the capability to iteratively consider if the final answer is ready to flush.
         """
         last_message = state['messages'][-1]
-
         if not isinstance(last_message, AIMessage):
             raise ValueError(
                 f"Expected AIMessage in output edges, but got {type(last_message).__name__}"
