@@ -9,20 +9,20 @@ if it can provide the final response
 from __future__ import annotations
 
 import logging
-from typing import Optional, Union, TYPE_CHECKING, Generic, Literal
+from typing import Optional, Union, TYPE_CHECKING, Generic, Literal, Sequence
+
+from langchain_core.prompt_values import PromptValue
 from typing_extensions import override
 
 from langchain_core.runnables import RunnableConfig
-from langchain_core.messages import AIMessage
-from langgraph.graph import StateGraph
-from langgraph.graph.state import END, START
+from langchain_core.messages import BaseMessage
 from langgraph.runtime import Runtime
 
 from src.registry import RegisterAgent
 from src.types import StateT, ContextT, OutputT, ToolSchema
 from src.chat.mixin import NonStatefulChatMixin
+from src.agent.mixin import ReactAgentMixin
 from src.chat.stateful_chat import ToolCallExecuteStatefulChat
-from src.utils.decorator import add_note_docstring
 
 if TYPE_CHECKING:
     ...
@@ -33,77 +33,37 @@ logger = logging.getLogger(__name__)
 @RegisterAgent(module_path=__name__, name='react_agent')
 class LoopReactAgent(
     NonStatefulChatMixin,
+    ReactAgentMixin,
     ToolCallExecuteStatefulChat,
     Generic[StateT, ContextT, OutputT, ToolSchema]
 ):
-    # TODO: add docs
-    """"""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.max_attempts = 5
-        self.num_tries = 0
+    """"The ReAct Agent can action and observe until meet conditions. It's non-stateful"""
 
     @override
-    def _build_internal_graph(self):
-        # TODO: consider using self-defined graph "src/base/graph.py"
-        self.graph_builder = StateGraph[StateT, ContextT, ..., OutputT](
-            state_schema=self.state_schema,
-            context_schema=self.state_schema,
-            input_schema=self.state_schema,
-            output_schema=self.output_schema
-        )
-
-        self.graph_builder.add_node(
-            node='model_call',
-            action=self.model_call,
-            metadata=None
-        )
-        self.graph_builder.add_node(
-            node='tool_call',
-            action=self.tool_call,
-            metadata=None
-        )
-
-        self.graph_builder.add_edge(START, 'model_call')
-        self.graph_builder.add_conditional_edges(
-            source='model_call',
-            path=self.observe_and_decide,
-            path_map={
-                'tool_call': 'tool_call',
-                'end': END
-            }
-        )
-        self.graph_builder.add_edge('tool_call', 'model_call')
-
-        self.graph = self.graph_builder.compile(
-            checkpointer=self.checkpointer,
-            name=self.name
-        )
-
-    @add_note_docstring("This function used to decide continue or finish a call")
-    def observe_and_decide(
+    def invoke(
         self,
-        state: Union[StateT],
-        runtime: Optional[Runtime[ContextT]] = None,
+        input: Union[str, PromptValue, BaseMessage, Sequence[BaseMessage]],
+        config: Optional[Union[RunnableConfig, dict]] = None,
         *,
-        config: Optional[RunnableConfig] = None,
-        **kwargs
-    ) -> Literal['tool_call', 'end']:
-        """Using ``state``, ``runtime``, ``config`` to decide whether continue with tool call or end. \n
-        It inspects the last AI message after executing tool and passing Tool Message back to conversation.\n
-        This illustrates react agent loop with the capability to iteratively consider if the final answer is ready to flush.
-        """
-        last_message = state['messages'][-1]
-        if not isinstance(last_message, AIMessage):
-            raise ValueError(
-                f"Expected AIMessage in output edges, but got {type(last_message).__name__}"
-            )
-        # If there is no tool call or reach attempt limits, finish
-        if not last_message.tool_calls and self.num_tries < self.max_attempts:
-            self.num_tries = 0
-            return "end"
+        context: Optional[Runtime[ContextT]] = None,
+        **kwargs,
+    ) -> BaseMessage:
+        prompt = self.chat_template.invoke(
+            input=input,
+            config=config
+        )
 
-        self.num_tries += 1
-        return 'tool_call'
+        return super().invoke(
+            input=prompt,
+            config=config,
+            context=context
+        )
+
+
+@RegisterAgent(module_path=__name__, name='react_stateful_agent')
+class ReactStatefulAgent(
+    ReactAgentMixin,
+    ToolCallExecuteStatefulChat,
+    Generic[StateT, ContextT, OutputT, ToolSchema]
+):
+    """"""
