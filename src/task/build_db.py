@@ -47,7 +47,7 @@ def load_vector_store(db_dir, embedding: str | Any = None):
     return db
 
 
-def build_vectorstore(data_dir, db_dir):
+def build_vectorstore(doc_dir, db_dir):
     logger.info("Initialize embedding model")
     embedding_model = load_embedding_model()
     embed_dim = len(embedding_model.embed_query('hello'))
@@ -68,9 +68,11 @@ def build_vectorstore(data_dir, db_dir):
         chunk_overlap=200,
     )
 
-    pdf_files = glob.glob(fr'{data_dir}/**/*.pdf')
+    pdf_files = glob.glob(fr'{doc_dir}/**/*.pdf', recursive=True)
+    logger.info(f"Total files: {len(pdf_files)}")
 
     all_docs = []
+    all_chunks = []
     batch_size = 20
     for i in tqdm.tqdm(range(0, len(pdf_files), batch_size)):
         batch_files = pdf_files[i:i + batch_size]
@@ -86,9 +88,14 @@ def build_vectorstore(data_dir, db_dir):
         all_docs.extend(batch_docs)
 
         chunks = text_splitter.split_documents(batch_docs)
-        vector_store.add_documents(chunks)
+        all_chunks.extend(chunks)
 
-    print(len(all_docs))
+        print(f"Chunk size: {len(chunks)}")
+        if chunks:
+            vector_store.add_documents(chunks)
+
+    logger.info(f"All docs: {len(all_docs)}")
+    logger.info(f"All chunks: {len(all_chunks)}")
 
     logger.info(f"Save vectorstore to {db_dir}")
     vector_store.save_local(folder_path=db_dir)
@@ -110,7 +117,4 @@ def extend_vectorstore_py_file(db_dir, file):
 
 
 if __name__ == '__main__':
-    build_vectorstore(
-        'data/interm/lakehead_scraped',
-        'vectorstores/lakehead/faiss_1000'
-    )
+    build_vectorstore('data/interm/lakehead_scraped_v1.1', 'vectorstores/lakehead/faiss_v1.1')

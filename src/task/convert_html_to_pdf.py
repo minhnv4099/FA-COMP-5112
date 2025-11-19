@@ -9,7 +9,6 @@ import os
 import tqdm
 import requests
 
-from json import load, dumps
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 
@@ -29,16 +28,12 @@ exclusive_patterns = [
 
 
 async def html_to_pdf(url, output_path):
-    # Tạo tên file theo domain + path
-
-    # 1. Kiểm tra MIME xem có phải PDF không
     try:
         head = requests.head(url, allow_redirects=True, timeout=10)
         content_type = head.headers.get("Content-Type", "").lower()
     except:
         content_type = ""
 
-    # 2. Nếu đúng là PDF → download trực tiếp
     if "pdf" in content_type or url.lower().endswith(".pdf"):
         print(f"[DOWNLOAD] {url} → {output_path}")
         r = requests.get(url, stream=True)
@@ -47,14 +42,21 @@ async def html_to_pdf(url, output_path):
         return output_path
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        browser = await p.chromium.launch(
+            headless=True,
+            channel="chrome",
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-gpu"
+            ]
+        )
+
         page = await browser.new_page()
 
-        # Hỗ trợ cả file cục bộ hoặc URL
         if os.path.exists(url):
             url = "file://" + os.path.abspath(url)
 
-        await page.goto(url, timeout=100000)
+        await page.goto(url, timeout=10000)
         await page.pdf(path=output_path, format="A4", print_background=True)
 
         await browser.close()
@@ -82,29 +84,29 @@ def htmls_to_pdfs():
         asyncio.run(html_to_pdf(html_file, pdf_file))
 
 
-async def urls_to_pdfs(urls: list[str]):
-    output_dir = "data/interm/lakehead_scraped"
+async def urls_to_pdfs(urls: list[str], output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    exist_pdf_files = glob.glob(fr"{output_dir}/**/*.pdf", recursive=True)
 
-    exist_pdf_files = glob.glob(fr"{output_dir}/**/*.pdf")
-
-    print(len(exist_pdf_files))
+    print(f"Total urls: {len(urls)}")
+    print(f"Existing urls: {len(exist_pdf_files)}")
 
     for i, url in tqdm.tqdm(enumerate(urls)):
         parsed = urlparse(url)
-
-        base = os.path.basename(parsed.path) or "index"
-
+        base = parsed.params + parsed.query
+        base = base or "can_remove_index"
         if not base.lower().endswith(".pdf"):
             base += ".pdf"
 
-        out_dir = os.path.join(output_dir, parsed.netloc)
+        out_dir = os.path.join(
+            output_dir.strip('/'), parsed.netloc, parsed.path.strip('/')
+        )
         os.makedirs(out_dir, exist_ok=True)
-
         output_path = os.path.join(out_dir, base)
 
         if output_path in exist_pdf_files:
-            # print(output_path)
             continue
+
         try:
             await html_to_pdf(url, output_path)
         except Exception:
@@ -113,7 +115,8 @@ async def urls_to_pdfs(urls: list[str]):
 
 if __name__ == '__main__':
     file = 'data/external/urls.jsonl'
+    output_dir = "data/interm/lakehead_scraped_v2"
     with open(file, 'r') as f:
         urls = json.load(f)
 
-    asyncio.run(urls_to_pdfs(urls=urls))
+    asyncio.run(urls_to_pdfs(urls=urls, output_dir=output_dir))
