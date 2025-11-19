@@ -18,15 +18,15 @@ from typing import (
 from abc import ABC, ABCMeta
 from abc import abstractmethod
 
+from langchain_core.messages import BaseMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
+from langchain_core.utils.interactive_env import is_interactive_env
 from langgraph.checkpoint.memory import InMemorySaver
 
 from src.types import OmegaList
 from src.utils.decorator import add_note_docstring
 
 if TYPE_CHECKING:
-    from langchain_core.messages import BaseMessage, AIMessage
-    from langchain_core.utils.interactive_env import is_interactive_env
     from langchain_core.tools.base import ToolCall
     from langgraph.types import StateSnapshot
 
@@ -83,14 +83,6 @@ class ChatMixin(ABC, metaclass=ABCMeta):
 class ToolCallChatMixin(ABC, metaclass=ABCMeta):
     """The Tool Call Chat Mixin with functionalities to generate tool call and execute tool"""
 
-    @abstractmethod
-    def _internal_tool_call(
-        self,
-        tool_call: ToolCall,
-        **kwargs,
-    ) -> BaseMessage:
-        """"""
-
     def get_pretty_prep(self, content: Any):
         """Try to get pretty content"""
         try:
@@ -121,13 +113,31 @@ class ToolCallChatMixin(ABC, metaclass=ABCMeta):
 
         return text
 
-    def _combine_message(self, seq_messages: list[BaseMessage]) -> AIMessage:
-        seq_repr = [
-            f"Name: {m.name}\n\n{m.content}"
-            for m in seq_messages
-        ]
+    def _combine_message(self, *seq_messages: BaseMessage) -> AIMessage:
+        """Combine messages to a single AI Message with details of an AI message that has tool calls.
+        It takes a tool-call AI message and tool messages, create a new AI message with these details. \n
+        It's really useful with tool calls. Optionally, it can be used to change a format printed of a message.
+        """
+        seq_repr = []
+        for m in seq_messages:
+            repr_content = ""
+            if not (name := m.name):
+                name = '<NO NAME>'
+            repr_content += f'- Name: {name}\n\n'
 
-        return AIMessage(content=f'{"="*100}\n\n'.join(seq_repr))
+            if not (content := m.content):
+                content = '<EMPTY>'
+            repr_content += f'- Content: {content}\n\n'
+
+            # Only AIMessage has tool calls
+            if isinstance(m, AIMessage):
+                if m.tool_calls:
+                    repr_content += f"- Tool Calls: {dumps(m.tool_calls, indent=3)}\n"
+
+            seq_repr.append(repr_content)
+
+        ai_content = "Details of ai message with tool calls: \n\n" + f'{"-"*60}\n\n'.join(seq_repr)
+        return AIMessage(content=ai_content)
 
     @classmethod
     def _convert_to_list(cls, seq: Union[Any, Iterable[Any]]) -> list[Any]:
