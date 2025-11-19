@@ -62,13 +62,14 @@ def write_script(script: str, file_path: str = None) -> None | str:
 def load_prompt_template_file(prompt: str | Path):
     if prompt is None:
         return dict()
+
     if os.path.isfile(prompt):
         if prompt.endswith('.yaml'):
             with open(prompt, 'r') as f:
                 prompt_dict = yaml.safe_load(f)
-
             return prompt_dict
         else:
             prompt_content = Path(prompt).read_text()
             return prompt_content
+
     return prompt

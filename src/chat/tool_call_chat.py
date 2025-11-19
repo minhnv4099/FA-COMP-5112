@@ -88,9 +88,9 @@ class ToolCallGenerateChat(
         config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         stop: Optional[list[str]] = None
-    ) -> Union[AIMessage, ParsedTollCallMessage, list[ParsedTollCallMessage]]:
-
-        ai_message = self.internal_invoke(
+    ) -> AIMessage:
+        """"""
+        ai_message = super().invoke(
             input=input,
             config=config,
             stop=stop
@@ -104,10 +104,11 @@ class ToolCallGenerateChat(
             for tool_call in ai_message.tool_calls
         ]
 
-        return self._combine_message(seq_messages=tool_based_messages)
+        return self._combine_message(
+            ai_message,
+            *tool_based_messages)
 
     @add_note_docstring('Parse tool call to formated output')
-    @override
     def _internal_tool_call(
         self,
         tool_call: ToolCall,
@@ -123,9 +124,10 @@ class ToolCallGenerateChat(
             ParsedTollCallMessage subclass of ToolMessage whose content is args in ``tool_call``
         """
         return ParsedTollCallMessage(
-            raw_content=tool_call['args'],
             content=self.get_pretty_prep(tool_call['args']),
             tool_call_id=tool_call['id'],
+            name=tool_call['name'],
+            raw_content=tool_call['args'],
         )
 
     @must_override
@@ -140,10 +142,10 @@ class ToolCallGenerateChat(
         ]
         schemas = list(filter(lambda x: x, schemas))
         if schemas:
-            ...
             # logger.warning(f"The schemas '{schemas}' are just (or treated as) tool schemas, which requires "
             #                f"'ToolMessage' after 'AIMessage' that have tool calls with associative tool_call_id.")
             logger.info(f"The '{self.name}' has access to {len(schemas)} tools schema.")
+            ...
 
         return schemas
 
@@ -160,8 +162,6 @@ class ToolCallGenerateChat(
 @RegisterChat(module_path=__name__, name='tool_call_execute_chat')
 class ToolCallExecuteChat(
     ToolCallGenerateChat,
-    ToolCallChatMixin,
-    BaseChat,
     Generic[StateT, ContextT, OutputT, ToolSchema]
 ):
     """The Chat class can execute tool, but not persistent."""

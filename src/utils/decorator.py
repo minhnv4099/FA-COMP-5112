@@ -17,7 +17,6 @@ def add_note_docstring(docs):
 
     This action doesn't change anything other than **note**.
     """
-
     def _inner_add(symbol):
         symbol.__note_docstring__ = docs
 
