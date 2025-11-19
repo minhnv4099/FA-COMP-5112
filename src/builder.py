@@ -6,17 +6,35 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Union, Literal
+from typing_extensions import TypedDict
 
-from src.base.graph import BaseGraph
+from src.graph.base import BaseGraph
 from src.registry import load_class
 
 if TYPE_CHECKING:
-    from src.chat import PersistentChat, ParseToolCallChat, BaseChatAssistance
+    from src.chat import BaseChat, StatefulChat, ToolCallGenerateChat
     from src.agent.base import BaseAgent
-    from src.base.chat import BaseChatAssistance
-    from src.base.node import BaseNode
+    from src.node.base import BaseNode
 
 logger = logging.getLogger(__name__)
+
+
+class BuildingConfig(TypedDict):
+
+    name: Literal[
+        'base_chat',
+        'tool_call_generate_chat',
+        'tool_call_execute_chat',
+        'stateful_chat',
+        'tool_call_execute_stateful_chat',
+        'tool_call_generate_stateful_chat',
+        'base_agent',
+        'react_agent'
+    ]
+
+    model_name: str
+
+    template_file: str
 
 
 class Builder:
@@ -29,9 +47,22 @@ class Builder:
     def build(
         cls,
         type: Literal['chat', 'agent', 'graph'],
-        config,
+        name: Literal[
+            'base_chat',
+            'tool_call_generate_chat',
+            'tool_call_execute_chat',
+            'stateful_chat',
+            'tool_call_execute_stateful_chat',
+            'tool_call_generate_stateful_chat',
+            'base_agent',
+            'react_agent',
+            'react_stateful_agent'
+        ],
+        config: dict,
         **kwargs
     ):
+        """No need to define name in ``config``. Pass by ``name``"""
+        config['name'] = name
         if type == 'chat':
             return cls.build_chat(config)
         elif type == 'agent':
@@ -54,7 +85,7 @@ class Builder:
     def build_chat(
         cls,
         chat_config: dict
-    ) -> ParseToolCallChat | PersistentChat | BaseChatAssistance:
+    ) -> BaseChat | StatefulChat:
         logger.info(f"Create '{chat_config['name']}' chat: {chat_config['model_name']}")
         chat_cls = load_class(type='chat', name=chat_config['name'])
 
