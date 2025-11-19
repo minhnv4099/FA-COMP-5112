@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import logging
 from typing import (
+    Any,
     Union,
     Optional,
     Sequence,
@@ -68,7 +69,7 @@ class BaseChat(ChatMixin):
     """File containing message templates, from system to human templates. 
     That are all templates the agent used for its task"""
 
-    system_template: Union[SystemMessagePromptTemplate, SystemMessage] = None
+    system_template: SystemMessagePromptTemplate = None
     """System prompt"""
 
     human_template: HumanMessagePromptTemplate = None
@@ -225,9 +226,47 @@ class BaseChat(ChatMixin):
         """
         raise NotImplementedError("Use 'invoke()' to interact with chat.")
 
+    def invoke(
+        self,
+        input: Union[str, dict[str, Any]],
+        config: Optional[Union[RunnableConfig, dict]] = None,
+        *,
+        stop: Optional[list[str]] = None
+    ) -> AIMessage:
+        """The invocation function exposed to user
+
+        Args:
+            input:
+                Input fed to the chat model. It is formated into chat template. If dict, make sure all keys are presented.
+            config:
+                Config to separate streams of conversation. It's only useful when using with persistent chat.
+            stop:
+                The sequence of string the model needs to stop generating if encounter
+
+        Returns:
+            The generated response.
+        """
+        # TODO: can move to mixin
+        if isinstance(input, str):
+            if len(input) == 0:
+                return AIMessage(content='Error: Input must have at least 1 token')
+
+            input = {'message': input}
+
+        prompt = self.chat_template.invoke(
+            input=input,
+            config=config
+        )
+
+        return self.internal_invoke(
+            input=prompt,
+            config=config,
+            stop=stop
+        )
+
     def internal_invoke(
         self,
-        input: Union[str, PromptValue, Sequence[BaseMessage]],
+        input: Union[str, dict[str, Any], PromptValue, Sequence[BaseMessage]],
         config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         stop: Optional[list[str]] = None
@@ -246,9 +285,6 @@ class BaseChat(ChatMixin):
         Returns:
             The generated response.
         """
-        if len(input) == 0:
-            return AIMessage(content='Error: Input must have at least 1 token')
-
         ai_message = self.chat_model.invoke(
             input=input,
             config=config,
@@ -257,37 +293,6 @@ class BaseChat(ChatMixin):
         self._count_tokens(ai_message)
 
         return ai_message
-
-    def invoke(
-        self,
-        input: Union[str, PromptValue, Sequence[BaseMessage]],
-        config: Optional[Union[RunnableConfig, dict]] = None,
-        *,
-        stop: Optional[list[str]] = None
-    ) -> AIMessage:
-        """The invocation function exposed to user
-
-        Args:
-            input:
-                Input fed to the chat model
-            config:
-                Config to separate streams of conversation. It's only useful when using with persistent chat.
-            stop:
-                The sequence of string the model needs to stop generating if encounter
-
-        Returns:
-            The generated response.
-        """
-        # TODO: process invoke chat template when different keys
-        prompt = self.chat_template.invoke(
-            input={'message': input},
-            config=config
-        )
-        return self.internal_invoke(
-            input=prompt,
-            config=config,
-            stop=stop
-        )
 
     @must_override
     def _prepare_message_templates(self, *args, **kwargs):
@@ -305,6 +310,7 @@ class BaseChat(ChatMixin):
             ),
             template_format='f-string'
         )
+
         self.human_template = HumanMessagePromptTemplate.from_template(
             template=templates_dict.get('human_template', """{message}"""),
             template_format='f-string',
