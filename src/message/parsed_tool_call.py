@@ -19,6 +19,7 @@ class ParsedTollCallMessage(ToolMessage):
         self,
         content: str,
         tool_call_id: str,
+        name: str = None,
         raw_content: dict = None,
         *args, **kwargs
     ):
@@ -28,6 +29,7 @@ class ParsedTollCallMessage(ToolMessage):
             *args,
             **kwargs
         )
+        self.name = name if name else self.tool_call_id
         self.raw_content = raw_content if raw_content else dict()
 
     def get_field(self, field: str, default=None) -> Any:
