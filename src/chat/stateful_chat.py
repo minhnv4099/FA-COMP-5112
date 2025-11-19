@@ -2,7 +2,7 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-"""The chat with capability to remember the whole conversation of an unique config (thread_id)
+"""The chat with capability to remember the whole conversation of a unique config (thread_id)
 It only works with text, NO tool call and structured output
 """
 
@@ -15,6 +15,8 @@ from typing import (
     Optional,
     TYPE_CHECKING,
     Generic,
+    cast,
+    Any
 )
 from typing_extensions import override
 
@@ -22,6 +24,7 @@ from langchain_core.prompt_values import PromptValue
 from langchain_core.runnables import RunnableConfig
 
 from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
+from langchain_core.prompts import SystemMessagePromptTemplate
 from langgraph.graph import StateGraph
 from langgraph.graph import END, START
 from langgraph.types import RetryPolicy
@@ -51,7 +54,7 @@ class StatefulChat(
     Generic[StateT, ContextT, OutputT],
     bypass_override=True, show_5112=False
 ):
-    """The Stateful chat class can retain the conversation"""
+    """The Stateful chat can retain the conversation"""
 
     config: Union[RunnableConfig, None]
     """Config containing ``thread_id``"""
@@ -97,7 +100,10 @@ class StatefulChat(
 
         self._set_system_behavior(
             config=self.config,
-            system_prompt=self.system_template
+            system_prompt=cast(
+                SystemMessage,
+                self.system_template.format(**kwargs.get('sys_dict', dict()))
+            )
         )
 
     @override
@@ -159,17 +165,17 @@ class StatefulChat(
     @override
     def invoke(
         self,
-        input: Union[str, BaseMessage, Sequence[BaseMessage], PromptValue],
+        input: Union[dict[str, Any], str, BaseMessage, Sequence[BaseMessage], PromptValue],
         config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         context: Optional[Runtime[ContextT]] = None,
         **kwargs,
-    ) -> BaseMessage:
+    ) -> AIMessage:
         """Exposing invoke function to outside
 
         Args:
             input:
-                A message or list of messages. It is merged with the latest state before actually being passed to chat model.
+                It is merged with the latest state before actually being passed to chat model.
             config:
                 Config to set thread
             context:
@@ -179,13 +185,19 @@ class StatefulChat(
             The last message of the conversation. It can be ToolMessage, AIMessage, ParserMessage
 
         """
-        if len(input) == 0:
-            return AIMessage(content='Error: Input must have at least 1 token')
-
         config = config if config else self.config
-        # using stream technique
+
+        # TODO: can move to mixin
+        if isinstance(input, (str, BaseMessage, tuple)):
+            if isinstance(input, str):
+                if len(input) == 0:
+                    return AIMessage(content='Error: Input must have at least 1 token')
+            input = {'messages': input}
+        elif isinstance(input, PromptValue):
+            input = {'messages': input.to_messages()}
+
         output = self.graph.invoke(
-            input={'messages': input},  # type: ignore
+            input=input,  # type: ignore
             config=config,
             context=context,
         )
@@ -196,13 +208,18 @@ class StatefulChat(
     def _set_system_behavior(
         self,
         config: Optional[Union[RunnableConfig, dict]],
-        system_prompt: Optional[Union[SystemMessage, str]] = None
+        system_prompt: Optional[Union[SystemMessage, SystemMessagePromptTemplate, str]] = None,
+        sys_kwargs: Optional[dict[str, str]] = None
     ):
         """Set behavior for each chat with different config"""
         if not system_prompt:
             system_prompt = SystemMessage(content="You are a very helpful assistance.")
         elif isinstance(system_prompt, str):
             system_prompt = SystemMessage(content=system_prompt)
+        elif isinstance(system_prompt, SystemMessagePromptTemplate):
+            system_prompt = system_prompt.format(
+                **sys_kwargs if sys_kwargs else ...
+            )
 
         self.put_state(
             config=config,
@@ -226,8 +243,6 @@ class StatefulChat(
 @RegisterChat(module_path=__name__, name='tool_call_generate_stateful_chat')
 class ToolCallGenerateStatefulChat(
     StatefulChat,
-    StatefulChatMixin,
-    GraphBasedMixin,
     ToolCallGenerateChat,
     Generic[StateT, ContextT, OutputT, ToolSchema]
 ):
@@ -269,6 +284,35 @@ class ToolCallGenerateStatefulChat(
             name=self.name
         )
 
+    @override
+    def invoke(
+        self,
+        input: Union[str, BaseMessage, Sequence[BaseMessage], PromptValue],
+        config: Optional[Union[RunnableConfig, dict]] = None,
+        *,
+        context: Optional[Runtime[ContextT]] = None,
+        **kwargs,
+    ) -> AIMessage:
+        """Exposing invoke function to outside
+
+        Args:
+            input:
+                A message or list of messages. It is merged with the latest state before actually being passed to chat model.
+            config:
+                Config to set thread
+            context:
+                Context information
+
+        Returns:
+            Normal AI message or AI message with details tool calls and tool message if having tool calls
+        """
+        return super().invoke(
+            input=input,
+            config=config,
+            context=context
+        )
+
+    @add_note_docstring("A node of the graph")
     def tool_call(
         self,
         state: Union[StateT],
@@ -276,23 +320,27 @@ class ToolCallGenerateStatefulChat(
         *,
         runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> dict:
+    ) -> Union[dict, None]:
         """A node handling tool calls in last messages. To execute tool or parse args as structured output"""
         last_ai_message = state['messages'][-1]
-        parser_messages = [
+        tool_based_messages = [
             self._internal_tool_call(tool_call=tool_call)
             for tool_call in last_ai_message.tool_calls
         ]
 
-        return {'messages': parser_messages}
+        if tool_based_messages:
+            return {
+                'messages': tool_based_messages + [self._combine_message(
+                                last_ai_message,
+                                *tool_based_messages),]
+            }
+        else:
+            return {}
 
 
 @RegisterChat(module_path=__name__, name='tool_call_execute_stateful_chat')
 class ToolCallExecuteStatefulChat(
     ToolCallGenerateStatefulChat,
-    StatefulChat,
-    StatefulChatMixin,
-    GraphBasedMixin,
     ToolCallExecuteChat,
     Generic[StateT, ContextT, OutputT, ToolSchema]
 ):
