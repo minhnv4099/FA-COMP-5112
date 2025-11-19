@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -14,6 +14,9 @@ from src.registry import RegisterTool
 from src.tool.base import BaseToolSchema
 from src.tool.schema import QueryRetrieveArgsSchema
 from src.tool.base import BaseDefinedTool
+
+if TYPE_CHECKING:
+    from langchain_community.docstore.document import Document
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +35,15 @@ class QueryRetriever(BaseDefinedTool):
         super().__init__(**kwargs)
 
         assert 'embedding_name' in kwargs
-        self.embedding_name = kwargs['embedding_name']
+        self.embedding_name: str = kwargs['embedding_name']
         assert 'db_path' in kwargs
-        self.db_path = kwargs['db_path']
+        self.db_path: str = kwargs['db_path']
+        self.doc_dir: str | None = kwargs.get('doc_dir', None)
 
         # TODO: consider other model
+        # TODO: add utils to load embedding models
         gpt4all_kwargs = {'allow_download': 'True'}
+        # NOTE: use
         self.embedding = GPT4AllEmbeddings(
             model_name=kwargs['embedding_name'],
             gpt4all_kwargs=gpt4all_kwargs,
@@ -46,6 +52,7 @@ class QueryRetriever(BaseDefinedTool):
 
         logger.info(f'Load vectorstore in "{self.db_path}"')
         # TODO: consider other db
+        # TODO: add utils to load db
         self.db = FAISS.load_local(
             folder_path=self.db_path,
             embeddings=self.embedding,
@@ -61,7 +68,10 @@ class QueryRetriever(BaseDefinedTool):
     def _run(self, query: str, *args: Any, **kwargs: Any) -> Any:
         docs = self.retrieving_engine.invoke(query)
 
-        return "\n\n".join(self.normalize_urls(doc.page_content) for doc in docs)
+        contents = [self.process_doc(doc) for doc in docs]
+        contents = [self.normalize_urls(content) for content in contents]
+
+        return f"\n\n{'='*100}\n".join(contents)
 
     def normalize_urls(self, text: str):
         import re
@@ -75,3 +85,24 @@ class QueryRetriever(BaseDefinedTool):
         cleaned = url_pattern.sub(fix, text)
 
         return cleaned
+
+    def process_doc(self, doc: Document) -> str:
+        import os
+
+        file: str = doc.metadata['source']
+        if self.doc_dir:
+            url = file.replace(self.doc_dir, 'https://')
+        else:
+            url = file
+
+        if 'can_remove_index' in file:
+            # process index url
+            url = os.path.split(url)[0]
+        else:
+            url = url[:url.rfind('/')] + '?' + url[url.rfind('/'):]
+            url = os.path.splitext(url)[0]
+
+        content = f"LINK: {url}\n\n"
+        content += doc.page_content
+
+        return content
