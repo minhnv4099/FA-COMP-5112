@@ -32,7 +32,9 @@ logger = logging.getLogger(__name__)
 
 
 @RegisterGraph(module_path=__name__, name='base')
-class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
+class BaseGraph(
+    Generic[StateT, ContextT, InputT, OutputT, NodeT]
+):
     """The Base Graph class
 
     Every state channel could be declared in a particular node. Then the graph replies on schema to
@@ -124,12 +126,9 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
         except ValueError as e:
             print(e)
 
-    def standardize_name_node(self, name):
-        return name.replace(' ', '_').lower()
-
     def _add_nodes(self, nodes: list[NodeT]):
         for i, node in enumerate(nodes):
-            name_node = self.standardize_name_node(node.name)
+            name_node = standardize_name_node(node.name)
             self.graph_builder.add_node(
                 node=name_node,
                 action=node,
@@ -139,7 +138,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
     def _add_edges(self, nodes: list[str | NodeT]):
         for i, node in enumerate(nodes):
-            name_node = self.standardize_name_node(node.name)
+            name_node = standardize_name_node(node.name)
 
             for in_vertex in node.edges['in_coming']:
                 if isinstance(in_vertex, str):
@@ -179,6 +178,8 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
             interrupt_after=[],
             debug=False,
         )
+
+        return self
 
     @add_note_docstring(docs="Used for only 'COMP-5112' project")
     def __call__(self, task, prompt, *args, **kwargs):
@@ -233,11 +234,11 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
 
     def invoke(
         self,
-        input: Union[StateT, InputT, str],
+        input: StateT,
         config: Optional[RunnableConfig] = None,
         *,
         context: Optional[Runtime[ContextT]] = None,
-    ) -> Union[OutputT, StateT, Interrupt]:
+    ) -> Union[OutputT, Interrupt]:
         """Invoke the graph, get any result (state or interrupted value)
 
         Args:
@@ -252,14 +253,16 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
         """
 
         inputs = self._convert_input_with_task_key(input)
-
-        self.state = self.graph.invoke(
+        config = config if config else self.config
+        response: OutputT = self.graph.invoke(
             input=inputs,
             context=context,
-            config=config if config else self.config,
+            config=config
         )
 
-        return self.state
+        self.state = self.get_state(config)
+
+        return response
 
     @add_note_docstring(docs="Used for only 'COMP-5112' project")
     def _convert_input_with_task_key(self, inputs):
@@ -291,3 +294,7 @@ class BaseGraph(Generic[StateT, ContextT, InputT, OutputT, NodeT]):
     def print_conversation(self, config=None):
         for m in self.get_messages(config):
             m.pretty_print()
+
+
+def standardize_name_node(name):
+    return name.replace(' ', '_').lower()

@@ -21,18 +21,18 @@ class BaseOutput(BaseModel):
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterChatOutputSchema(name='planner', module_path=__name__)
+@RegisterChatOutputSchema(module_path=__name__, name='planner')
 class PlannerOutput(BaseOutput):
-    """Use this schema when only need to plan a mission/task. Don't use the schema for other questions/tasks when
-    not accutally need.
-    It may be a construction, creation. Breaking it into smaller parts/subtasks likely produce better operation
+    """Because this schema acts as a structured output, always only use this schema when have enough information to
+    get the final response. Don't use this schema along with tool calls. This schema contains a sequence of
+    manageable subtasks after breaking a task into smaller ones that may be a construction, creation, ... request
     """
 
-    subtasks: Sequence[str] = Field(description="List of smaller parts after wisely breaking")
+    subtasks: Sequence[str] = Field(description="List of smaller manageable subtasks")
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterChatOutputSchema(name='retriever', module_path=__name__)
+@RegisterChatOutputSchema(module_path=__name__, name='retriever')
 class RetrieverOutput(BaseOutput):
     """Always use this tool to structure your response"""
 
@@ -41,7 +41,7 @@ class RetrieverOutput(BaseOutput):
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterChatOutputSchema(name='coding', module_path=__name__)
+@RegisterChatOutputSchema(module_path=__name__, name='coding')
 class CodingOutput(BaseOutput):
     """Always use this output schema to response user requires generating code"""
 
@@ -53,6 +53,9 @@ class CodingOutput(BaseOutput):
 class CriticSolutionPair(BaseOutput):
     """The output schema for a single pair of critic and fix"""
 
+    satisfied: Literal[True, False] = Field(
+        description="Verify whether the solution is applied appropriately, True or False")
+
     critic: str = Field(description="A critic that exists in an image")
 
     solution: str = Field(description="A solution (action, adjustment) that used by coding agent to "
@@ -60,9 +63,9 @@ class CriticSolutionPair(BaseOutput):
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterChatOutputSchema(name='critic', module_path=__name__)
+@RegisterChatOutputSchema(module_path=__name__, name='critic')
 class CriticOutput(BaseOutput):
-    """Output schema for the critic agent"""
+    """Output schema for the critic agent. Always use it"""
 
     critic_solution_list: Sequence[CriticSolutionPair] = Field(
         description="List of (critic, solution) pairs in the given image")
@@ -70,7 +73,7 @@ class CriticOutput(BaseOutput):
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
 class SatisfiedSolution(BaseOutput):
-    """Always use this schema when need to verify 'critics and solutions'"""
+    """Output schema for a single triplet of (satisfied, new_critic, solution)"""
 
     satisfied: Literal[True, False] = Field(
         description="Verify whether the solution is applied appropriately, True or False")
@@ -84,11 +87,16 @@ class SatisfiedSolution(BaseOutput):
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterChatOutputSchema(name='verification', module_path=__name__)
+@RegisterChatOutputSchema(module_path=__name__, name='verification')
 class VerificationOutput(BaseOutput):
-    """Output schema for the verification agent"""
+    """Output schema for the verification agent. Always use it"""
 
     ss_list: Sequence[SatisfiedSolution] = Field(
+        examples=[
+            {'satisfied': False, 'new_critic': '', 'solution': ''},
+            {'satisfied': True, 'new_critic': None, 'solution': ''},
+            {'satisfied': False, 'new_critic': '', 'solution': ''}
+        ],
         description="The output schema must be either: "
                     "list of dictionary if verify user needs to verify 'critic and solutions' "
                     "OR "

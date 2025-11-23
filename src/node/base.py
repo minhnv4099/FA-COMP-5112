@@ -3,7 +3,7 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import logging
-from typing import Union, Generic, Optional, Any
+from typing import Union, Generic, Optional, Any, TYPE_CHECKING, TypeVar, Literal, Sequence
 from typing_extensions import override, overload
 
 from langgraph.runtime import Runtime
@@ -13,12 +13,17 @@ from src.registry import RegisterNode
 from src.types import StateT, InputT, ContextT, OutputT, ToolSchema
 from src.agent.react_loop import LoopReactAgent
 
+if TYPE_CHECKING:
+    ...
+
 logger = logging.getLogger(__name__)
 
 
 @RegisterNode(module_path=__name__, name='base_node')
-class BaseNode(LoopReactAgent, Generic[StateT, ContextT, InputT, OutputT, ToolSchema]):
-    # TODO: add docstring
+class BaseNode(
+    LoopReactAgent,
+    Generic[StateT, ContextT, InputT, OutputT]
+):
     """The Base Node class"""
 
     node_name: str
@@ -65,26 +70,14 @@ class BaseNode(LoopReactAgent, Generic[StateT, ContextT, InputT, OutputT, ToolSc
     ):
         raise NotImplementedError
 
-    def get_desired_result(
+    def _extend_conversation(
         self,
-        message: BaseMessage,
-        keys_to_get: str,
-        default: Any = None
-    ) -> Any:
-        """Get value from the message with the key
+        his_conversation: list[BaseMessage],
+        messages: list[BaseMessage],
+    ) -> Sequence[BaseMessage]:
+        if not his_conversation:
+            messages.extend(messages)
+        else:
+            his_conversation.extend(messages[1:])
 
-        Now only support single key.
-        """
-        if isinstance(message, AIMessage):
-            return message.content
-
-        return message.get_field(
-            field=keys_to_get,
-            default=default
-        )
-
-    def process_response(self, response: Any):
-        if isinstance(response, str):
-            return [response, ]
-
-        return response
+        return his_conversation

@@ -50,7 +50,6 @@ class QueryRetriever(BaseDefinedTool):
             client=None
         )
 
-        logger.info(f'Load vectorstore in "{self.db_path}"')
         # TODO: consider other db
         # TODO: add utils to load db
         self.db = FAISS.load_local(
