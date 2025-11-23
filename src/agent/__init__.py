@@ -5,22 +5,25 @@
 from src.utils import scan_module
 
 from src.agent.base import BaseAgent
-from src.agent.react_loop import LoopReactAgent
+from src.agent.react_loop import LoopReactAgent, ReactStatefulAgent
 
-# from src.agent.planner import PlannerAgent
-# from src.agent.retriever import RetrieverAgent
-# from src.agent.coding import CodingAgent
-# from src.agent.critic import CriticAgent
-# from src.agent.verification import VerificationAgent
-# from src.agent.user import UserAgent
+from src.agent.planner import PlannerAgent
+from src.agent.retriever import RetrieverAgent
+from src.agent.coding import CodingAgent
+from src.agent.critic import CriticAgent
+from src.agent.verification import VerificationAgent
+from src.agent.user import UserAgent
 
 __module_lookup = {
+    "base": "BaseAgent",
+    "react": "LoopReactAgent",
+    "stateful_react": "ReactStatefulAgent",
     "planner": "PlannerAgent",
     "retriever": "RetrieverAgent",
     "coding": "CodingAgent",
     "critic": "CriticAgent",
     "verification": "VerificationAgent",
-    "user": "UserAgent",
+    "user": "UserAgent"
 }
 
 

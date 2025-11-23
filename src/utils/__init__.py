@@ -7,21 +7,25 @@ from typing import Union, Literal
 
 from langgraph.types import Command, Send
 
+from src.utils.file import clean_text
+
 
 class DirectionRouter:
     """This class acts as a direction router base on 'Command' or 'Send' mechanism"""
 
     @classmethod
-    def goto(
-            cls,
-            state: dict,
-            node: str,
-            method: Literal['command', 'send'] = 'command'
+    def jump(
+        cls,
+        updates: dict,
+        jump_to: str,
+        method: Literal['command', 'send'] = 'command'
     ) -> Union[Command, Send, None]:
         if method.lower() == 'command':
-            return Command(update=state, goto=node)
+            return Command(update=updates, goto=jump_to)
+
         elif method.lower() == 'send':
-            return Send(arg=state, node=node)
+            return Send(arg=updates, node=jump_to)
+
         return None
 
 
