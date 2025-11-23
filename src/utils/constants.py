@@ -15,7 +15,7 @@ DEFAULT_CAMERA_TEMPLATE_FILE = 'templates/camera_templates/template.json'
 DEFAULT_CAMERA_SETTING_FILE = 'src/camera/prepare_cam_data.py'
 """"""
 
-DEFAULT_CAPTURE_IMAGE_FILE = 'src/camera/capture_image.py'
+DEFAULT_RENDER_IMAGE_FILE = 'src/camera/render_image.py'
 """"""
 
 ANCHOR_FILE = 'assets/blender_script/anchor.py'
@@ -27,6 +27,6 @@ __all__ = [
     "SAVE_VERIFICATION_DIR",
     "DEFAULT_CAMERA_SETTING_FILE",
     "DEFAULT_CAMERA_TEMPLATE_FILE",
-    "DEFAULT_CAPTURE_IMAGE_FILE",
+    "DEFAULT_RENDER_IMAGE_FILE",
     "ANCHOR_FILE"
 ]

@@ -6,13 +6,17 @@ import os
 import subprocess
 import base64
 import yaml
+import html
+import ast
+import re
 from pathlib import Path
 
 __all__ = [
     "load_image_content",
     "load_prompt_template_file",
     "execute_file",
-    "write_script"
+    "write_script",
+    "clean_text"
 ]
 
 
@@ -22,7 +26,7 @@ def load_image_content(image_path: str):
 
 
 def execute_file(script_path: str):
-    process = subprocess.Popen(
+    output = subprocess.Popen(
         args=['python', script_path],
         shell=False,
         restore_signals=True,
@@ -31,12 +35,12 @@ def execute_file(script_path: str):
         stderr=subprocess.PIPE,
         universal_newlines=True
     )
-    stdout, stderr = process.communicate()
-    result = {"error": stderr, 'stdout': stdout, 'returncode': process.returncode}
+    stdout, stderr = output.communicate()
+    result = {"error": stderr, 'stdout': stdout, 'returncode': output.returncode}
 
-    process.terminate()
-    process.kill()
-    process.wait()
+    output.terminate()
+    output.kill()
+    output.wait()
 
     return result
 
@@ -53,8 +57,8 @@ def write_script(script: str, file_path: str = None) -> None | str:
     if file_path is None:
         file_path = 'tmp.py'
 
-    with open(file_path, mode='w') as f:
-        f.write(script)
+    with open(file_path, mode='w', encoding='utf-8') as f:
+        f.write(clean_text(text=script))
 
     return file_path
 
@@ -72,4 +76,41 @@ def load_prompt_template_file(prompt: str | Path):
             prompt_content = Path(prompt).read_text()
             return prompt_content
 
-    return prompt
+    return dict()
+
+
+def clean_text(text: str) -> str:
+    """
+    Clean LLM-generated code by removing all escaping layers:
+    - HTML escape (&quot;)
+    - JSON double escape (\\n)
+    - Python literal escape (\\\" and others)
+    """
+
+    if text is None:
+        return ""
+
+    cleaned = text
+
+    # 1. HTML unescape (&quot;, &lt;, &gt;, &amp;)
+    cleaned = html.unescape(cleaned)
+
+    # 2. Nếu là code trong chuỗi literal → thử literal_eval
+    #    Ví dụ: "\"print(\\\"hello\\\")\\n\""
+    try:
+        # Cố gắng biến nó thành literal Python thật
+        cleaned = ast.literal_eval(f"'{cleaned}'")
+    except Exception:
+        pass
+
+    # 3. JSON escape: \\n → \n ; \\" → "
+    cleaned = cleaned.replace("\\n", "\n")
+    cleaned = cleaned.replace("\\t", "\t")
+    cleaned = cleaned.replace('\\"', '"')
+    cleaned = cleaned.replace("\\'", "'")
+    cleaned = cleaned.replace("\\\\", "\\")
+
+    # 5. Xóa các ký tự HTML/escape còn sót
+    cleaned = cleaned.strip()
+
+    return cleaned
