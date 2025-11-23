@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Union, Literal
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, TypeAlias
 
 from src.graph.base import BaseGraph
 from src.registry import load_class
@@ -37,6 +37,26 @@ class BuildingConfig(TypedDict):
     template_file: str
 
 
+Available: TypeAlias = Literal[
+    'base_chat',
+    'tool_call_generate_chat',
+    'tool_call_execute_chat',
+    'stateful_chat',
+    'tool_call_execute_stateful_chat',
+    'tool_call_generate_stateful_chat',
+    'base_agent',
+    'react_agent',
+    'react_stateful_agent',
+    # comp 5112
+    'planner',
+    'retriever',
+    'coding',
+    'critic',
+    'verification',
+    'user'
+]
+
+
 class Builder:
     """The Coordinator class"""
 
@@ -47,22 +67,13 @@ class Builder:
     def build(
         cls,
         type: Literal['chat', 'agent', 'graph'],
-        name: Literal[
-            'base_chat',
-            'tool_call_generate_chat',
-            'tool_call_execute_chat',
-            'stateful_chat',
-            'tool_call_execute_stateful_chat',
-            'tool_call_generate_stateful_chat',
-            'base_agent',
-            'react_agent',
-            'react_stateful_agent'
-        ],
         config: dict,
+        name: Available = None,
         **kwargs
     ):
         """No need to define name in ``config``. Pass by ``name``"""
-        config['name'] = name
+        config['name'] = name if name else ...
+
         if type == 'chat':
             return cls.build_chat(config)
         elif type == 'agent':
@@ -76,7 +87,7 @@ class Builder:
         agent_config: dict,
     ) -> Union[BaseAgent]:
         """"""
-        logger.info(f"Create {agent_config['name']} agent: {agent_config['model_name']}")
+        logger.info(f"Create '{agent_config['name']}' agent: {agent_config['model_name']}")
         agent_cls = load_class(type='agent', name=agent_config['name'])
 
         return agent_cls(**agent_config)
