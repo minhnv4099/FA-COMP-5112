@@ -20,7 +20,12 @@ from typing_extensions import deprecated
 from langchain_core.prompt_values import PromptValue
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.runnables import RunnableConfig
-from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
+from langchain_core.messages import (
+    BaseMessage,
+    SystemMessage,
+    AIMessage,
+    HumanMessage
+)
 from langchain_core.prompts import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
@@ -39,6 +44,8 @@ if TYPE_CHECKING:
     from langchain.chat_models.base import BaseChatModel
 
 logger = logging.getLogger(__name__)
+
+LanguageModelInput = Union[str, dict[str, Any], PromptValue, BaseMessage, Sequence[BaseMessage], list[BaseMessage]]
 
 
 @RegisterChat(module_path=__name__, name='base_chat')
@@ -85,8 +92,10 @@ class BaseChat(ChatMixin):
     """Volume of output tokens chat model generated"""
 
     opening_symbols: str
+    """Opening signals of an agent call"""
 
-    ending_symbols: str
+    closing_symbols: str
+    """Closing signals of an agent call"""
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__()
@@ -147,16 +156,17 @@ class BaseChat(ChatMixin):
 
         # prompt templates
         self.template_file = template_file
+        # logger.info(f"{self.name} loads templates from: '{self.template_file}'")
         self._prepare_message_templates()
-        self._prepare_chat_template()
+        self.chat_template = self._prepare_chat_template()
 
         # usage metadata
         self.num_input_tokens = 0
         self.num_output_tokens = 0
 
         # use as middleware
-        self.opening_symbols = "-" * 60 + ' ' + self.name + ' ' + "-" * 60
-        self.ending_symbols = "*" * (122 + len(self.name))
+        self.opening_symbols = "-" * 60 + ' ' + self.name.title() + ' ' + "-" * 60
+        self.closing_symbols = "*" * (122 + len(self.name))
 
     @deprecated("No needed because can use cheap or free models.")
     def _check_model_name(self):
@@ -202,33 +212,17 @@ class BaseChat(ChatMixin):
     def base_url(self):
         return self.endpoint_url
 
-    @add_note_docstring(docs="Used for 'COMP-5112' project")
     def __call__(
         self,
         *args,
         **kwargs
     ):
-        """The abstractive node function receives state input and returns update state
-        Subclasses must implement this method
-
-        Args:
-            state (Union[InputT, StateT]):
-                State only takes the necessary keys declared in InputT from "state_schema" of the graph.
-                Default to None
-            config (RunnableConfig, optional):
-                Config passed during operation. Default to None
-            context (ContextT, optional):
-                Context variables from the program. Default to None
-            runtime (Runtime, optional):
-                Values from runtime. Default to None
-        Returns:
-            dict: Update state
-        """
+        """"""
         raise NotImplementedError("Use 'invoke()' to interact with chat.")
 
     def invoke(
         self,
-        input: Union[str, dict[str, Any]],
+        input: LanguageModelInput,
         config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         stop: Optional[list[str]] = None
@@ -236,37 +230,43 @@ class BaseChat(ChatMixin):
         """The invocation function exposed to user
 
         Args:
-            input:
-                Input fed to the chat model. It is formated into chat template. If dict, make sure all keys are presented.
-            config:
-                Config to separate streams of conversation. It's only useful when using with persistent chat.
-            stop:
-                The sequence of string the model needs to stop generating if encounter
+            input: Input fed to the chat model.
+                Types:
+
+                - ``str``: Content of the human message in chat template.
+                - ``dict``: To format ``chat_template``, all keys must be valid.
+                - ``PromptValue, BaseMessage, Sequence[BaseMessage]``: Pass directly.
+            config: (deprecated) Config to separate streams of conversation. It's only useful when using with persistent chat.
+            stop: The sequence of string the model needs to stop generating if encounter
 
         Returns:
             The generated response.
         """
-        # TODO: can move to mixin
-        if isinstance(input, str):
+        # TODO: can move to utils
+        if isinstance(input, dict):
+            input = self.chat_template.invoke(
+                input=input,
+                config=config
+            )
+        elif isinstance(input, str):
             if len(input) == 0:
                 return AIMessage(content='Error: Input must have at least 1 token')
-
-            input = {'message': input}
-
-        prompt = self.chat_template.invoke(
-            input=input,
-            config=config
-        )
+            input = self.chat_template.invoke(
+                input={'message': input},
+                config=config
+            )
+        elif isinstance(input, (PromptValue, BaseMessage, Sequence, list)):
+            input = input
 
         return self.internal_invoke(
-            input=prompt,
+            input=input,
             config=config,
             stop=stop
         )
 
     def internal_invoke(
         self,
-        input: Union[str, dict[str, Any], PromptValue, Sequence[BaseMessage]],
+        input: LanguageModelInput,
         config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         stop: Optional[list[str]] = None
@@ -275,12 +275,9 @@ class BaseChat(ChatMixin):
         Present exposing this method outside, only called by other operations/
 
         Args:
-            input:
-                Input fed to the chat model
-            config:
-                Config to separate streams of conversation. It's only useful when using with persistent chat.
-            stop:
-                The sequence of string the model needs to stop generating if encounter
+            input: Input fed to the chat model
+            config: Config to separate streams of conversation. It's only useful when using with persistent chat.
+            stop: The sequence of string the model needs to stop generating if encounter
 
         Returns:
             The generated response.
@@ -320,16 +317,16 @@ class BaseChat(ChatMixin):
     @must_override
     def _prepare_chat_template(
         self,
-        system_prompt: Optional[SystemMessagePromptTemplate, SystemMessage] = None,
-        human_template: Optional[HumanMessagePromptTemplate] = None,
-    ):
+        system_template: Optional[SystemMessagePromptTemplate, SystemMessage] = None,
+        human_template: Optional[HumanMessagePromptTemplate, HumanMessage, str] = None,
+    ) -> ChatPromptTemplate:
         """Prepare chat template for a turn
 
         The method works with the constraints that 1 system template followed by a human template
         """
-        self.chat_template = ChatPromptTemplate(
+        return ChatPromptTemplate(
             messages=[
-                system_prompt if system_prompt else self.system_template,
+                system_template if system_template else self.system_template,
                 human_template if human_template else self.human_template
             ],
             template_format='f-string',

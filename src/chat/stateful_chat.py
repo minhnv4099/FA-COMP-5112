@@ -33,7 +33,7 @@ from langgraph.runtime import Runtime
 from src.registry import RegisterChat
 from src.types import ContextT, StateT, OutputT, ToolSchema
 from src.chat.mixin import GraphBasedMixin, StatefulChatMixin
-from src.chat.base import BaseChat
+from src.chat.base import BaseChat, LanguageModelInput
 from src.chat.tool_call_chat import ToolCallGenerateChat, ToolCallExecuteChat
 from src.state.base import BaseState
 from src.context.base import BaseContext
@@ -42,6 +42,7 @@ from src.utils.decorator import add_note_docstring
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
     from langgraph.checkpoint.memory import BaseCheckpointSaver
+    from src.message.parsed_tool_call import ParsedTollCallMessage
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,7 @@ class StatefulChat(
         *,
         runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> dict:
+    ) -> dict[str, Any]:
         """An entrypoint node in the graph, invoking chat model
 
         Args:
@@ -160,41 +161,47 @@ class StatefulChat(
             config=config
         )
 
-        return {'messages': response}
+        return {'messages': [response,]}
 
     @override
     def invoke(
         self,
-        input: Union[dict[str, Any], str, BaseMessage, Sequence[BaseMessage], PromptValue],
+        input: LanguageModelInput,
         config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         context: Optional[Runtime[ContextT]] = None,
         **kwargs,
     ) -> AIMessage:
-        """Exposing invoke function to outside
+        """The invocation function exposed to user
 
         Args:
-            input:
+            input: Input fed to the chat model.
+                Types:
+
+                - ``dict``: Like state, pass directly, all keys must be valid.
+                - ``str``: Content of the human message -> {"messages": ...}.
+                - ``PromptValue``: To messages -> {"messages": ...}.
+                - ``BaseMessage, Sequence[BaseMessage]``: Pass directly -> {"messages": ...}.
                 It is merged with the latest state before actually being passed to chat model.
-            config:
-                Config to set thread
-            context:
-                Context information
+            config: Config to separate streams of conversation. It's only useful when using with persistent chat.
+            context: The sequence of string the model needs to stop generating if encounter
 
         Returns:
-            The last message of the conversation. It can be ToolMessage, AIMessage, ParserMessage
-
+            The generated response.
         """
         config = config if config else self.config
 
-        # TODO: can move to mixin
-        if isinstance(input, (str, BaseMessage, tuple)):
-            if isinstance(input, str):
-                if len(input) == 0:
-                    return AIMessage(content='Error: Input must have at least 1 token')
+        # TODO: can move to utils
+        if isinstance(input, dict):
+            input = input
+        elif isinstance(input, str):
+            if len(input) == 0:
+                return AIMessage(content='Error: Input must have at least 1 token')
             input = {'messages': input}
         elif isinstance(input, PromptValue):
             input = {'messages': input.to_messages()}
+        elif isinstance(input, (BaseMessage, Sequence, list)):
+            input = {'messages': input}
 
         output = self.graph.invoke(
             input=input,  # type: ignore
@@ -287,24 +294,28 @@ class ToolCallGenerateStatefulChat(
     @override
     def invoke(
         self,
-        input: Union[str, BaseMessage, Sequence[BaseMessage], PromptValue],
+        input: LanguageModelInput,
         config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         context: Optional[Runtime[ContextT]] = None,
         **kwargs,
-    ) -> AIMessage:
-        """Exposing invoke function to outside
+    ) -> AIMessage | ParsedTollCallMessage:
+        """The invocation function exposed to user
 
         Args:
-            input:
-                A message or list of messages. It is merged with the latest state before actually being passed to chat model.
-            config:
-                Config to set thread
-            context:
-                Context information
+            input: Input fed to the chat model.
+                Types:
+
+                - ``dict``: Like state, pass directly, all keys must be valid.
+                - ``str``: Content of the human message -> {"messages": ...}.
+                - ``PromptValue``: To messages -> {"messages": ...}.
+                - ``BaseMessage, Sequence[BaseMessage]``: Pass directly -> {"messages": ...}.
+                It is merged with the latest state before actually being passed to chat model.
+            config: Config to separate streams of conversation. It's only useful when using with persistent chat.
+            context: The sequence of string the model needs to stop generating if encounter
 
         Returns:
-            Normal AI message or AI message with details tool calls and tool message if having tool calls
+            The generated response.
         """
         return super().invoke(
             input=input,
@@ -328,14 +339,7 @@ class ToolCallGenerateStatefulChat(
             for tool_call in last_ai_message.tool_calls
         ]
 
-        if tool_based_messages:
-            return {
-                'messages': tool_based_messages + [self._combine_message(
-                                last_ai_message,
-                                *tool_based_messages),]
-            }
-        else:
-            return {}
+        return {'messages': tool_based_messages}
 
 
 @RegisterChat(module_path=__name__, name='tool_call_execute_stateful_chat')

@@ -18,7 +18,8 @@ from typing import (
     TYPE_CHECKING,
     Generic,
     Optional,
-    Sequence
+    Sequence,
+    Any
 )
 from typing_extensions import override
 from langchain_core.messages import AIMessage
@@ -31,14 +32,13 @@ from src.types import (
     ToolSchema,
     OmegaDict
 )
-from src.chat.base import BaseChat
+from src.chat.base import BaseChat, LanguageModelInput
 from src.chat.mixin import ToolCallChatMixin
 from src.message.parsed_tool_call import ParsedTollCallMessage
 from src.utils.decorator import must_override, add_note_docstring
 from src.utils.exception import NotFoundTool
 
 if TYPE_CHECKING:
-    from langchain_core.prompt_values import PromptValue
     from langchain_core.runnables import RunnableConfig
     from langchain_core.tools.base import ToolCall
     from langchain_core.messages import (
@@ -60,7 +60,10 @@ class ToolCallGenerateChat(
     """The Chat class can generate tool calls, but not persistent."""
 
     tool_schemas: list[Union[ToolSchema, dict]]
-    """Tool schemas including output schema"""
+    """Tool schemas"""
+
+    chat_output: list[Union[ToolSchema, dict]]
+    """Output schema"""
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -69,22 +72,26 @@ class ToolCallGenerateChat(
         self,
         *args,
         tool_schemas: list[Union[ToolSchema, dict]] = None,
+        chat_output: list[Union[ToolSchema, dict]] = None,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
 
         self.tool_schemas = tool_schemas
+        self.chat_output = chat_output
         # bind schemas to the chat model
         if self.chat_model:
             schemas = self._validate_schemas()
             self.chat_model = self.chat_model.bind_tools(
-                tools=schemas, strict=False
+                tools=schemas,
+                strict=True,
+                tool_choice='any'
             )
 
     @override
     def invoke(
         self,
-        input: Union[str, PromptValue, Sequence[BaseMessage]],
+        input: LanguageModelInput,
         config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         stop: Optional[list[str]] = None
@@ -105,7 +112,6 @@ class ToolCallGenerateChat(
         ]
 
         return self._combine_message(
-            ai_message,
             *tool_based_messages)
 
     @add_note_docstring('Parse tool call to formated output')
@@ -117,8 +123,7 @@ class ToolCallGenerateChat(
         """The actual handler tool call. This chat class just parses args of tool call into structure output
 
         Args:
-            tool_call:
-                Contains information about the tool
+            tool_call: Contains information about the tool
 
         Returns:
             ParsedTollCallMessage subclass of ToolMessage whose content is args in ``tool_call``
@@ -134,17 +139,19 @@ class ToolCallGenerateChat(
     def _validate_schemas(self) -> list[ToolSchema]:
         """Validate output schemas to chat model"""
         self.tool_schemas = self._convert_to_list(seq=self.tool_schemas)
+        self.chat_output = self._convert_to_list(seq=self.chat_output)
         # get all schemas, do matter output schema and tool schema
         # let model know schemas
         schemas = [
-            self.fetch_schema(schema)
-            for schema in self.tool_schemas
+            self.fetch_schema(schema=schema)
+            for schema in self.tool_schemas + self.chat_output
         ]
         schemas = list(filter(lambda x: x, schemas))
         if schemas:
             # logger.warning(f"The schemas '{schemas}' are just (or treated as) tool schemas, which requires "
             #                f"'ToolMessage' after 'AIMessage' that have tool calls with associative tool_call_id.")
-            logger.info(f"The '{self.name}' has access to {len(schemas)} tools schema.")
+            logger.info(f"The '{self.name}' has access to {len(schemas)} schemas"
+                        f" ({len(self.tool_schemas)} tools + {len(self.chat_output)} outputs).")
             ...
 
         return schemas
@@ -156,7 +163,10 @@ class ToolCallGenerateChat(
         if not isinstance(schema, OmegaDict):
             return schema
 
-        return fetch_registered(metadata=schema)
+        schema_obj = fetch_registered(metadata=schema)
+        schema_obj.name = schema['name']
+
+        return schema_obj
 
 
 @RegisterChat(module_path=__name__, name='tool_call_execute_chat')
@@ -172,7 +182,7 @@ class ToolCallExecuteChat(
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.tools = self._get_tool_from_schemas()
+        self.tools = self._get_tool_from_schemas(self.tool_schemas)
 
     @add_note_docstring('Execute tool call')
     @override
@@ -185,14 +195,19 @@ class ToolCallExecuteChat(
         If no tool (function) is found, treat it as tool schema -> parse output.
         """
         if tool_call['name'] in self.tools:
+            # ToolMessage
             tool = self.tools[tool_call['name']]
             return tool.invoke(input=tool_call)
         else:
+            # ParsedTollCallMessage
             return super()._internal_tool_call(tool_call=tool_call)
 
-    def _get_tool_from_schemas(self) -> dict[str, BaseDefinedTool]:
+    def _get_tool_from_schemas(
+        self,
+        tool_schemas: Sequence[Union[ToolSchema, dict]]
+    ) -> dict[str, BaseDefinedTool]:
         executable_tools = dict()
-        for schema in self.tool_schemas:
+        for schema in tool_schemas:
             if schema['type'] == 'tool':
                 try:
                     executable_tools[schema['name']] = load_tool(

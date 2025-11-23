@@ -65,19 +65,13 @@ class ChatMixin(ABC, metaclass=ABCMeta):
         """Get a string describing input and output token usage"""
         return f'Input tokens: {self.num_input_tokens}, Output tokens: {self.num_output_tokens}'
 
-    def _print_used_tokens(self, _logger):
-        """Log input and output token usage"""
-        _logger.info(self._used_token_prep())
-
     def _finish_session(self, _logger, conversation=None):
         if conversation:
             self.log_conversation(_logger, conversation)
         _logger.info(self._used_token_prep())
-        _logger.info(self.ending_symbols)
-
-    def __getattr__(self, item):
-        if item not in self.__dict__:
-            logging.critical(f"{self.__class__} has no '{item}'")
+        _logger.info(self.closing_symbols)
+        self.num_input_tokens = 0
+        self.num_output_tokens = 0
 
 
 class ToolCallChatMixin(ABC, metaclass=ABCMeta):
@@ -185,32 +179,20 @@ class StatefulChatMixin(ABC, metaclass=ABCMeta):
         self,
         config: Optional[Union[RunnableConfig, dict]] = None
     ):
+        print(self.opening_symbols)
+        print('>>>>>>>> CONVERSATION <<<<<<<<')
+        print()
         for m in self.get_messages(config):
             m.pretty_print()
+
+        print()
+        print(self._used_token_prep())
+        print(self.closing_symbols)
 
 
 class NonStatefulChatMixin(ABC, metaclass=ABCMeta):
     """The non-stateful Chat Mixin class only retrain everything in a call turn."""
 
-    def _initialize_config(self):
-        self.config: RunnableConfig = RunnableConfig(
-            recursion_limit=200,
-            configurable={
-            }
-        )
-
-    def _initialize_checkpointer(self):
-        self.checkpointer = False
-
     @add_note_docstring("No need set system prompt")
     def _set_system_behavior(self, **kwargs):
         ...
-
-    def print_conversation(
-        self,
-        config: Optional[Union[RunnableConfig, dict]] = None
-    ):
-        logger.error(f'No checkpointer was setup [{self.checkpointer}], '
-                     f'as this class is non-stateful. So no retain conversation.')
-
-        print('===== Empty conversation =====')
