@@ -2,18 +2,18 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from typing import Sequence, Literal, Union
-from typing_extensions import Annotated
+from typing import Sequence, Literal, Union, Any
+from typing_extensions import Annotated, TypedDict
 
 from src.registry import RegisterState
 from src.utils import scan_module
-from src.state.base import BaseState
+from src.state.base import MutilAgentState
 
 __all__ = scan_module(globals())
 
 
 @RegisterState(module_path=__name__, name='planner')
-class PlannerState(BaseState):
+class PlannerState(MutilAgentState):
     """The input state for Planner Agent"""
 
     task: Annotated[str, ...]
@@ -21,7 +21,7 @@ class PlannerState(BaseState):
 
 
 @RegisterState(module_path=__name__, name='retriever')
-class RetrieverState(BaseState):
+class RetrieverState(MutilAgentState):
     """The input state for Retriever Agent"""
 
     queries: Annotated[Sequence[Union[str, dict[str, str]]], ...]
@@ -32,7 +32,7 @@ class RetrieverState(BaseState):
 
 
 @RegisterState(module_path=__name__, name='coding')
-class CodingState(BaseState):
+class CodingState(MutilAgentState):
     """The input state for Coding Agent
     The Coding Agent has 2 main responsibilities:
         1. Generate code (until no error)
@@ -68,13 +68,9 @@ class CodingState(BaseState):
     coding_task: Annotated[Literal['fix', 'improve', 'generate'], ...]
     """Current task for Coding Agent: *generate script*, *fix error* and *apply improvements*"""
 
-    is_sub_call: Annotated[bool, ...]
-
-    caller: Annotated[str, ...]
-
 
 @RegisterState(module_path=__name__, name='critic')
-class CriticState(BaseState):
+class CriticState(MutilAgentState):
     """The input state for Critic Agent"""
 
     current_script: Annotated[Sequence[str], ...]
@@ -88,7 +84,7 @@ class CriticState(BaseState):
 
 
 @RegisterState(module_path=__name__, name='verification')
-class VerificationState(BaseState):
+class VerificationState(MutilAgentState):
     """The input state for Verification Agent"""
 
     current_script: Annotated[str, ...]
@@ -105,7 +101,7 @@ class VerificationState(BaseState):
 
 
 @RegisterState(module_path=__name__, name='user')
-class UserPromptUpState(BaseState):
+class UserPromptUpState(MutilAgentState):
     """The input state for User Agent"""
 
     user_additional_prompt: Annotated[Sequence[str], ...]
@@ -128,3 +124,9 @@ class SharedState(
     UserPromptUpState,
 ):
     """The shared state contains all state channels"""
+
+
+@RegisterState(module_path=__name__, name='comp_5112_output')
+class COMP5112Output(TypedDict):
+
+    agent_response: Annotated[Any, ...]
