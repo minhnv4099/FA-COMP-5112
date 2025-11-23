@@ -4,28 +4,33 @@ name: Retriever
 metadata:
   description: This node acts as a retriever agent, helps to retrieve relevant documents with given query from pre-defined vectorstore
 
+template_file:  templates/prompt/general/retriever.yaml
 db_path: vectorstores/faiss_4.0/
 embedding_name: all-MiniLM-L6-v2.gguf2.f16.gguf
 
-n_docs: 1
-
-template_file: templates/prompt/retriever.yaml
+n_docs: 4
 
 input_schema:
-  type: state
-  name: retriever
-output_schema:
-  type: chat_output
-  name: retriever
-tool_schemas: [ ]
+  type: 'state'
+  name: 'retriever'
+chat_output:
+  type: 'chat_output'
+  name: 'retriever'
+tool_schemas:
+  - type: 'tool'
+    name: 'blender_query_retriever'
+    tool_kwargs:
+      db_path: "vectorstores/faiss_4.0"
+      embedding_name: "all-MiniLM-L6-v2.gguf2.f16.gguf"
+      n_docs: 4
 
 edges:
-  in_coming: [ ]
-  out_going: [ ]
+  in_coming: []
+  out_going: []
 
 use_model: True
 
-model_name: minimax/minimax-m2:free
+model_name: x-ai/grok-4.1-fast #openai/gpt-4.0-mini
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

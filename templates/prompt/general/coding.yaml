@@ -6,7 +6,7 @@ system_template: |-
   
   Never delete or rewrite the whole script. Always edit, extend, or refine the existing code instead. Keep all previous logic unless it is proven wrong or redundant. 
   When fixing or refining, only modify the minimal necessary parts and preserve all useful sections, comments, and structure. 
-  With following instructions
+  With following instructions:
  
   - Scene Initialization
   - Remove default objects.
@@ -31,12 +31,13 @@ system_template: |-
   - Back light / rim light (adds depth and separation).
   - Lights should use AREA type for soft shadows.
   - Adjustable intensity values.
-  - Optional: add HDRI environment lighting for realism.
+  - Optional: add HDRI environment lighting for realism.s
   
   Camera Setup:
-  - Wide angle camera 
-  - Rotate around the model 5 times at every 72 degrees. 
+  - Not setup cameras
   
+  Render Engine:
+  - Use ```bpy.context.scene.render.engine = 'BLENDER_EEVEE'```
   Code Organization, structure script into functions:
   - clean_scene()
   - create_model()
@@ -50,10 +51,9 @@ system_template: |-
   Support execution with if __name__ == "__main__":.
 
   Output Requirements:
-  - The LLM must produce a ready-to-run Python script.
   - Output characters as they are, without escaping or modifying them. 
   - The script should look polished by default (not just raw geometry).
-  - Must be compatible with Blender Python API v4.
+  - Must be compatible with Blender Python API v4.0
   - Must be extensible (easy to swap model, lights, materials).
   
   Things you should not do:
@@ -68,36 +68,34 @@ human_generate_template: |-
     ```
   MUST combine appropriate parts from them in to the new generated script.
   Use below information:
-    - Subtask: {subtask}
+    - TASK: {task}
   
-    - Summary: {summary}
+    - INSTRUCTION: {instruction}
   
-    - Previous scripts: 
+    - PREVIOUS SCRIPTS: 
   {previous_scripts}
 
 human_fix_template: |-
   Fix the error based on the current script and summary of solution to fix it. Return refined version of code.
   Note: DO NOT remove current script.
   Use below information:
-    - Current script: 
+    - CURRENT SCRIPT: 
   ```python
   {current_script}
   ```
   
-    - Error: 
+    - ERROR: 
   {error}
   
-    - Summary: {summary} 
+    - INSTRUCTION: {instruction} 
 
 human_improve_template: |-
-  Refine the current script after applying solution based on docs, and return refined version of code
+  Refine the current script after applying solution, and return refined version of code.
   DO NOT remove current script.
   Use below information:
-    - Current script: 
+    - CURRENT SCRIPT: 
   ```python
   {current_script}
   ```
   
-    - Solution: {solution}
-  
-    - Docs: {summary}
+    - SOLUTION: {solution}

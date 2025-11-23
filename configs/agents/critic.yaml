@@ -4,6 +4,7 @@ name: Critic
 metadata:
   description: This node acts as a critic agent, analyzes, points out flaws in given images and gives fixes
 
+template_file: templates/prompt/general/critic.yaml
 save_rendered_dir: assets/rendered_images/critic
 anchor_script_path: assets/blender_script/anchor_critic.py
 camera_template_file: templates/camera_templates/template.json
@@ -16,7 +17,7 @@ n_rendered_images: 1
 input_schema:
   type: state
   name: critic
-output_schema:
+chat_output:
   type: chat_output
   name: critic
 tool_schemas: [ ]
@@ -25,11 +26,9 @@ edges:
   in_coming: [ ]
   out_going: [ ]
 
-template_file: templates/prompt/critic.yaml
-
 use_model: True
 
-model_name: openrouter/polaris-alpha #openai/gpt-5-nano
+model_name: x-ai/grok-4.1-fast #openai/gpt-4.0-mini
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

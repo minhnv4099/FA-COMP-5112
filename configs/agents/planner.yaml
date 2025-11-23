@@ -4,30 +4,25 @@ name: Planner
 metadata:
   description: This node acts as an planner agent, helps to break given task into smaller subtasks
 
+template_file: templates/prompt/general/planner.yaml
+
 max_subtasks: 1
 
 input_schema:
   type: state
   name: planner
-
-output_schema:
+chat_output:
   type: chat_output
   name: planner
-
-tool_schemas:
-  - type: tool
-    name: execute_python
 
 edges:
   in_coming:
     - start
-  out_going: [ ]
-
-template_file: templates/prompt/planner.yaml
+  out_going: []
 
 use_model: True
 
-model_name: minimax/minimax-m2:free
+model_name: x-ai/grok-4.1-fast #openai/gpt-4.0-mini
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

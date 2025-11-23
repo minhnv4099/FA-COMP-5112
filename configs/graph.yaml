@@ -5,7 +5,9 @@ _name: base_graph
 state_schema:
   type: state
   name: shared
-
-#context_schema:
-#  type: context
-#  name: shared
+context_schema:
+  type: state
+  name: base_context
+output_schema:
+  type: state
+  name: comp_5112_output

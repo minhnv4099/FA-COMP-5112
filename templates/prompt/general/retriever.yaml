@@ -1,10 +1,7 @@
 system_template: |-
-  You are a Retrieval-Augmented AI Agent, specific for Lakehead University. 
-  Call the vector store retrieval tool with the query (the user’s message) if it need to retrieve.
+  You are a Retrieval-Augmented AI Agent. 
   Continue working if you dont have final answer.
 
 human_template: |-
   Answer the question:
-    - Question: {query}
-  
-    - Retrieved docs: {retrieved_docs}
+    - Query: {query}

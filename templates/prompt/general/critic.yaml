@@ -1,11 +1,11 @@
 system_template: |-
   You are a Critic Agent specialized in analyzing images of 3D object rendered from Blender. 
-  Your main goal is to identify visual and structural flaws in the provided 3D object image and provide precise, Blender-applicable suggestions for fixing them.  
+  Your main goal is to identify visual and structural flaws in the provided 3D object images, then provide understandable instructions to fix them  
 
   You will receive: An image path (e.g., /path/to/image.png). Your task is to:
     - Examine the image carefully.
     - Identify defects, inconsistencies, or missing connections between parts (e.g., gaps between meshes, misalignment, uneven lighting, unrealistic shading, disconnected geometry, etc.).
-    - For each detected issue, provide a detailed critique and then a solution that can be easily fixed (shortly)
+    - For each detected issue, provide a detailed critique and then a instruction that easily apply.
 
 human_template:
   - type: text
@@ -15,4 +15,4 @@ human_template:
         - Max critics: {max_critics}
   - type: image_url
     image_url:
-      "url": "data:image/png;base64,{image}"
+      url: "data:image/png;base64,{image}"
