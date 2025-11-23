@@ -1,3 +1,5 @@
+bpy.context.scene.render.engine = 'BLENDER_EEVEE'
+
 for cam in cameras:
     scene.camera = cam["object"]
     scene.render.filepath = cam["filepath"]
