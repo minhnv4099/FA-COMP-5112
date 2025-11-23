@@ -3,7 +3,6 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 from __future__ import annotations
-import uuid
 
 import logging
 from typing import (
@@ -15,9 +14,9 @@ from typing import (
     cast,
     Any
 )
-from typing_extensions import override, deprecated
+from typing_extensions import override
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, AIMessage
 from langchain_core.prompts import SystemMessagePromptTemplate
 from langgraph.graph.state import END
 from langgraph.config import RunnableConfig
@@ -32,6 +31,7 @@ from src.utils.decorator import add_note_docstring
 
 if TYPE_CHECKING:
     from src.state.comp_5112 import RetrieverState
+    from src.message.parsed_tool_call import ParsedTollCallMessage
 
 logger = logging.getLogger(__name__)
 
@@ -51,50 +51,69 @@ class RetrieverAgent(
     @override
     def __call__(
         self,
-        state: RetrieverState,
+        state: StateT,
         config: Optional[RunnableConfig] = None,
         *,
         runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> Union[OutputT, Command, dict[str, Any]]:
+    ) -> Command[Literal['coding']]:
         """"""
         logger.info(self.opening_symbols)
-        self.config['configurable']['thread_id'] = uuid.uuid1()
+        self.persistent_on_invoke = True
 
-        retrieved_docs: dict[int, list] = dict()
+        retrieved_docs: dict[int, Any] = dict()
 
-        for i, query in enumerate(state['queries']):
-            logger.info(f"query {i + 1}/{len(state['queries'])}: {query}")
+        queries = state.get('agent_response', [])
+        for i, query in enumerate(queries):
+            separator = '\n' if state['coding_task'] == 'fix' else ''
+            logger.info(f"query {i + 1}/{len(queries)}: {separator}{query}")
 
             selected_system_prompt = self._select_system_prompt()
-            prompt_value = self._prepare_chat_template(
-                system_prompt=selected_system_prompt,
+            prompt_template = self._prepare_chat_template(
+                system_template=selected_system_prompt,
                 human_template=self.human_template
-            ).invoke(input=query)
-
-            response = self.invoke(
-                input=prompt_value,
-                config=self.config
             )
 
-            retrieved_docs[i] = response.content
+            prompt_value = prompt_template.invoke(
+                input={'query': query}
+            )
 
-        # -------------------------------------------------
-        logger.info('Aggregate the conversion')
-        aggr_prompt = [self._get_aggregate_system_prompt()] + self.get_messages()
-        final_message = self.invoke(
-            input=aggr_prompt,
-            config=self.config
-        )
+            response = cast(
+                "ParsedTollCallMessage",
+                self.invoke(
+                    input=prompt_value,
+                    config=self.config
+                )
+            )
+
+            agent_response = response.get_field(field='summary', default="No instruction")
+            retrieved_docs[i] = {
+                'query': query,
+                'instruction': agent_response
+            }
+
+        # logger.info('Aggregate messages')
+        # aggr_prompt = [self._get_aggregate_system_prompt()] + self.get_messages()
+        # aggr_message = self.invoke(
+        #     input=aggr_prompt,
+        #     config=self.config
+        # )
 
         update_state = {
-            'retrieved_docs': retrieved_docs,
-            "messages": final_message,
-            'queries': state['queries'],
+            'agent_response': retrieved_docs,
+            'coding_task': state.get('coding_task', 'generate'),
+            'caller': state.get('caller', 'planner'),
+            'messages': self.get_messages()
         }
 
+        self._finish_session(_logger=logger)
+
         # return update_state
-        return DirectionRouter.goto(state=update_state, node=END, method='command')
+        return DirectionRouter.jump(
+            updates=update_state,
+            jump_to='coding',
+            method='command'
+        )
 
     def _select_system_prompt(self) -> Union[SystemMessage, SystemMessagePromptTemplate]:
         return self.system_template

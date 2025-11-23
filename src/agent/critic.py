@@ -2,30 +2,35 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+from __future__ import annotations
+
 import os
 import glob
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING, Generic, cast, Literal
 from typing_extensions import override
 
-from langgraph.config import RunnableConfig
-from langgraph.runtime import Runtime
-
 from src.registry import RegisterNode, RegisterAgent
-from src.types import InputT, OutputT
+from src.utils import DirectionRouter
 from src.utils.constants import (
     DEFAULT_CAMERA_SETTING_FILE,
-    DEFAULT_CAPTURE_IMAGE_FILE,
+    DEFAULT_RENDER_IMAGE_FILE,
     SAVE_CRITIC_DIR,
     DEFAULT_CAMERA_TEMPLATE_FILE
 )
-from src.base.node import AgentAsNode
-from src.base.utils import DirectionRouter
+from src.node.base import BaseNode
 from src.utils.decorator import add_note_docstring
+from src.types import StateT, ContextT, InputT, OutputT
 from src.utils.exception import NoRenderImages
 from src.utils.file import load_image_content
 from src.utils.file import write_script, execute_file
+
+if TYPE_CHECKING:
+    from langgraph.config import RunnableConfig
+    from langgraph.runtime import Runtime
+    from langgraph.types import Command
+    from src.message.parsed_tool_call import ParsedTollCallMessage
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +38,12 @@ logger = logging.getLogger(__name__)
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
 @RegisterAgent(module_path=__name__, name='critic')
 @RegisterNode(module_path=__name__, name='critic')
-class CriticAgent(AgentAsNode, node_name='Critic'):
+class CriticAgent(
+    BaseNode,
+    Generic[StateT, ContextT, InputT, OutputT],
+    node_name='Planner',
+    use_model=True
+):
     """The Critic Agent class"""
 
     def __init__(
@@ -44,7 +54,7 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
         validating_prompt: str = None,
         camera_template_file: str = None,
         camera_setting_file: str = None,
-        capture_image_file: str = None,
+        render_image_file: str = None,
         max_critics: int = None,
         n_rendered_images: Optional[int] = None,
         **kwargs
@@ -57,7 +67,7 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
         self.anchor_script_path = anchor_script_path
         self.camera_template_file = camera_template_file if camera_template_file else DEFAULT_CAMERA_TEMPLATE_FILE
         self.camera_setting_file = camera_setting_file if camera_setting_file else DEFAULT_CAMERA_SETTING_FILE
-        self.capture_image_file = capture_image_file if capture_image_file else DEFAULT_CAPTURE_IMAGE_FILE
+        self.render_image_file = render_image_file if render_image_file else DEFAULT_RENDER_IMAGE_FILE
         self.save_rendered_dir = save_rendered_dir if save_rendered_dir else SAVE_CRITIC_DIR
         self._make_dirs()
 
@@ -67,14 +77,15 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
     @override
     def __call__(
         self,
-        state: InputT | dict,
-        runtime: Runtime = None,
-        config: RunnableConfig = None,
+        state: StateT,
+        config: Optional[RunnableConfig] = None,
+        *,
+        runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> DirectionRouter | OutputT:
+    ) -> Command:
         """"""
-
         logger.info(self.opening_symbols)
+        self.persistent_on_invoke = True
 
         logger.info("Setup camera to capture images")
         ready_render_script, save_dir = self._process_script(state['current_script'])
@@ -90,25 +101,32 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
         logger.info(f"Validating prompt: {validating_prompt}")
 
         critics_solutions_dict = dict()
-        conversation = []
         solutions = []
+        messages = []
         for i, image in enumerate(rendered_image_paths):
             # -----------------------------------------------
-            formatted_prompt = self._get_pretty_formatted_prompt(
-                chat_prompt_template=self.chat_template,
+            prompt_value = self.chat_template.invoke(
                 input={
                     'image': load_image_content(image),
                     'validating_prompt': validating_prompt,
                     'max_critics': self.max_critics,
                 }
             )
-            response, _messages = self.chat_model_call(formatted_prompt)
-            # self.log_conversation(logger, _messages)
+
+            response = cast(
+                "ParsedTollCallMessage",
+                self.invoke(
+                    input=prompt_value,
+                    config=self.config
+                )
+            )
+
             # -----------------------------------------------
-            critics_solutions_dict[i] = response
-            solutions.extend([d['solution'] for d in response])
-            # -----------------------------------------------
-            logger.info(f"image ({i + 1}/{len(rendered_image_paths)}): {image} - 🟣 🟣 🟣 {len(response)} critics 🟣 🟣 🟣")
+            agent_response = response.get_field()
+            critics_solutions_dict[i] = agent_response
+            solutions.extend([d['solution'] for d in agent_response if not d['satisfied']])
+
+            logger.info(f"image ({i + 1}/{len(rendered_image_paths)}): {image} - 🟣 🟣 🟣 {len(agent_response)} critics 🟣 🟣 🟣")
 
             # display image paths in conversation instead of base64 content
             to_log_messages = [
@@ -117,35 +135,45 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
                     'validating_prompt': validating_prompt,
                     'max_critics': self.max_critics,
                 }).to_messages(),
-                _messages[-1]
             ]
-            conversation = self._extend_conversation(his_conversation=conversation, messages=to_log_messages)
+            messages = self._extend_conversation(
+                his_conversation=messages,
+                messages=to_log_messages
+            )
 
         logger.info(f"Solutions by Critic: {len(solutions)} -- {solutions}")
 
-        self._finish_session(logger, conversation)
+        next_node: Literal['coding', 'user', '__end__']
+        if solutions:
+            next_node = 'coding'
+        else:
+            next_node = '__end__'
 
         update_state = {
-            'queries': solutions,
-            'coding_task': 'improve',
-            'is_sub_call': False,
-            'caller': 'critic',
-            'has_docs': False,
+            'agent_response': solutions,
             'critics_solutions': critics_solutions_dict,
+            'coding_task': 'improve',
+            'caller': 'critic',
             'rendered_images': rendered_image_paths,
-            'messages': conversation
+            'messages': messages
         }
 
-        return DirectionRouter.goto(state=update_state, node='coding', method='command')
+        self._finish_session(logger)
 
-    def check_critic_fixes(self, critic_fixes: list[dict]):
+        return DirectionRouter.jump(
+            updates=update_state,
+            jump_to=next_node,
+            method='command'
+        )
+
+    def check_critics_solutions(self, critics_solutions: list[dict]):
         raise NotImplementedError
 
     def _process_script(self, script):
         with open(self.camera_setting_file, mode='r') as f:
             camera_setting = f.read()
 
-        with open(self.capture_image_file, mode='r') as f:
+        with open(self.render_image_file, mode='r') as f:
             capture = f.read()
 
         save_dir = f"{self.save_rendered_dir}/{len(os.listdir(self.save_rendered_dir))}"
@@ -166,7 +194,7 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
         logger.info(f'Write rendered-ready script to "{self.anchor_script_path}"')
         write_script(script, self.anchor_script_path)
 
-        logger.info(f"Execute '{self.anchor_script_path}' to capture images.")
+        logger.info(f"Executing '{self.anchor_script_path}' to capture images.")
         execute_file(script_path=self.anchor_script_path)
 
         rendered_image_paths = glob.glob(fr"{save_dir}/*.png")
@@ -176,7 +204,6 @@ class CriticAgent(AgentAsNode, node_name='Critic'):
 
     def _make_dirs(self):
         par = Path(self.anchor_script_path).parent
-        # shutil.rmtree(self.save_rendered_dir, ignore_errors=True)
 
         os.makedirs(par, exist_ok=True)
         os.makedirs(self.save_rendered_dir, exist_ok=True)

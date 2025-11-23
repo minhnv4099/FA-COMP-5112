@@ -2,9 +2,21 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+from __future__ import annotations
+
 import logging
 from collections import defaultdict
-from typing import Sequence, Optional, Union
+from typing import (
+    Sequence,
+    Optional,
+    Union,
+    cast,
+    TYPE_CHECKING,
+    Literal,
+    TypeAlias,
+    Type,
+    Generic
+)
 from typing_extensions import override
 
 from langchain_core.prompts import (
@@ -16,21 +28,33 @@ from langchain_core.runnables.config import RunnableConfig
 from langgraph.runtime import Runtime
 
 from src.agent.critic import CriticAgent
-from src.base.node import AgentAsNode
-from src.base.utils import DirectionRouter
+from src.node.base import BaseNode
+from src.utils import DirectionRouter
 from src.registry import RegisterAgent, RegisterNode
-from src.types import InputT, OutputT, StateT
+from src.types import StateT, ContextT, InputT, OutputT
 from src.utils.decorator import add_note_docstring
 from src.utils.exception import NoRenderImages
 from src.utils.file import load_image_content, load_prompt_template_file
 
+if TYPE_CHECKING:
+    from langchain_core.messages import SystemMessage, HumanMessage, BaseMessage
+    from langgraph.types import Command
+    from src.message.parsed_tool_call import ParsedTollCallMessage
+
 logger = logging.getLogger(__name__)
+
+CriticSolutionType: TypeAlias = Type[dict[int, list[dict[Literal['critic', 'solution'], str]]]]
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
 @RegisterAgent(module_path=__name__, name='verification')
 @RegisterNode(module_path=__name__, name='verification')
-class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
+class VerificationAgent(
+    CriticAgent,
+    BaseNode,
+    Generic[StateT, ContextT, InputT, OutputT],
+    node_name='Verification'
+):
     """The Verification Agent class"""
 
     def __init__(
@@ -47,14 +71,15 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
     @override
     def __call__(
         self,
-        state: Union[StateT, InputT, dict],
-        runtime: Runtime = None,
-        config: RunnableConfig = None,
+        state: StateT,
+        config: Optional[RunnableConfig] = None,
+        *,
+        runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> Union[OutputT, StateT, DirectionRouter]:
+    ) -> Command:
         """"""
-
         logger.info(self.opening_symbols)
+        self.persistent_on_invoke = True
 
         # script after fixing
         logger.info("Setup camera to capture fixes images")
@@ -72,9 +97,15 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
             state['msg'] = f"No image rendered by Verification Agent. Let's try again with a new task"
             raise NoRenderImages(state=state)
 
-        solutions, messages, critics_solutions = self._verify(state, rendered_images, modified_rendered_images)
+        solutions, critics_solutions, messages = self._verify(
+            state=state,
+            rendered_images=rendered_images,
+            modified_rendered_images=modified_rendered_images
+        )
 
         logger.info(f"Solutions by Verification: {len(solutions)} -- {solutions}")
+
+        next_node: Literal['user', 'coding', '__end__']
         if solutions:
             # if still have solutions
             if self.verification_tries < self.verification_attempts:
@@ -91,29 +122,31 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
             # no critic from critic agent or use need to be solved, i.e. all solutions/change are satisfied
             next_node = 'user'
             self.verification_tries = 0
-
-        self._finish_session(logger, messages)
-
+        next_node = '__end__'
         update_state = {
             # used by Coding agent
-            'queries': solutions,
+            'agent_response': solutions,
             'coding_task': 'improve',
-            'is_sub_call': False,
             'caller': 'verification',
-            'has_docs': False,
             # Used by Verification Agent
             'critics_solutions': critics_solutions,
             # Used by User Agent to terminate and return final results
             'rendered_images': modified_rendered_images,
-            'messages': messages,
-            'msg': state.get('msg', '')
+            'msg': state.get('msg', ''),
+            'message': []
         }
 
-        return DirectionRouter.goto(state=update_state, node=next_node, method='command')
+        self._finish_session(logger)
+
+        return DirectionRouter.jump(
+            updates=update_state,
+            jump_to=next_node,
+            method='command'
+        )
 
     def _verify(
         self,
-        state: InputT,
+        state: StateT,
         rendered_images: Sequence[str],
         modified_rendered_images: Sequence[str]
     ) -> (list[str], Sequence, Optional[dict]):
@@ -131,19 +164,18 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
 
     def _verify_critic(
         self,
-        state,
-        rendered_images,
-        modified_rendered_images
-    ) -> (list[str], Sequence, dict):
+        state: StateT,
+        rendered_images: Sequence[str],
+        modified_rendered_images: Sequence[str]
+    ) -> (list[str], CriticSolutionType, Sequence[BaseMessage]):
         """"""
-        logger.info("Verify critics and fixes")
+        logger.info("Verify critics and solutions")
 
         chat_template = self._prepare_chat_template(human_template=self.human_verify_critic_template)
         critics_solutions_dict = state['critics_solutions']
         new_critic_satisfied_solution_dict = defaultdict(list)
         solutions = []
-        conversation = []
-
+        messages = []
         for i, (ri, mi) in enumerate(zip(rendered_images, modified_rendered_images)):
             # ri: rendered image
             # mi: modified rendered image
@@ -155,20 +187,27 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
             previous_critics = [d['critic'] for d in critics_solutions]
             previous_solutions = [d['solution'] for d in critics_solutions]
             # ---------------------------------------------------------------
-            formatted_prompt = chat_template.invoke({
+            prompt_value = chat_template.invoke({
                 'image': load_image_content(ri),
                 'modified_image': load_image_content(mi),
                 'critics_solutions': critics_solutions,
             })
-            response, _messages = self.chat_model_call(formatted_prompt)
-            # -----------------------------------------------
-            for c in response:
+
+            response = cast(
+                "ParsedTollCallMessage",
+                self.invoke(
+                    input=prompt_value,
+                    config=self.config
+                )
+            )
+
+            agent_response = response.get_field(field='ss_list')
+            for c in agent_response:
                 if not c['satisfied']:
                     new_critic_satisfied_solution_dict[i].append({
                         'critic': c['new_critic'],
                         'solution': c['solution']
                     })
-                    # -----------------------------------------------
                     solutions.append(c['solution'])
                     logger.info(f'Same critic? {c["new_critic"] in previous_critics} & '
                                 f'Same solution?: {c["solution"] in previous_solutions}')
@@ -179,80 +218,86 @@ class VerificationAgent(CriticAgent, AgentAsNode, node_name='Verification'):
                     'modified_image': mi,
                     'critics_solutions': critics_solutions,
                 }).to_messages(),
-                _messages[-1]
+                response,
             ]
-            conversation = self._extend_conversation(his_conversation=conversation, messages=to_log_messages)
+            messages = self._extend_conversation(
+                his_conversation=messages,
+                messages=to_log_messages
+            )
 
-        return solutions, conversation, new_critic_satisfied_solution_dict
+        return solutions, new_critic_satisfied_solution_dict, messages
 
     def _verify_prompt(
         self,
-        state,
-        rendered_images,
-        modified_rendered_images
-    ) -> (list[str], Sequence, None):
+        state: StateT,
+        rendered_images: Sequence[str],
+        modified_rendered_images: Sequence[str]
+    ) -> (list[str], None, Sequence[BaseMessage]):
         """"""
-
         logger.info(f"Verify additional prompt: {state['additional_prompt']}")
 
         chat_template = self._prepare_chat_template(human_template=self.human_verify_prompt_template)
-        conversation = []
         solutions = []
+        messages = []
 
         for i, (ri, fi) in enumerate(zip(rendered_images, modified_rendered_images)):
             logger.info(f"image ({i + 1}/{len(modified_rendered_images)}): '{ri}' vs '{fi}'")
             # -----------------------------------------------
-            formatted_prompt = chat_template.invoke({
+            prompt_value = chat_template.invoke({
                 'image': load_image_content(ri),
                 'modified_image': load_image_content(fi),
                 'additional_prompt': [state['additional_prompt'], ],
             })
-            response, _messages = self.chat_model_call(formatted_prompt)
-            # -----------------------------------------------
-            if isinstance(response, list):
-                # expect only one (issue, solution) per image
-                response = response[0]
-            if not response['satisfied']:
-                solutions.append(response['solution'])
-            # -----------------------------------------------
+
+            response = cast(
+                'ParsedTollCallMessage',
+                self.invoke(
+                    input=prompt_value,
+                    config=self.config
+                )
+            )
+
+            agent_response = response.get_field('ss_list', default=dict())
+            solutions = [d['solution'] for d in agent_response[0] if not d['satisfied']]
+
             to_log_messages = [
                 *chat_template.invoke({
                     'image': ri,
                     'modified_image': fi,
                     'additional_prompt': state['additional_prompt']
                 }).to_messages(),
-                _messages[-1]
             ]
-            conversation = self._extend_conversation(his_conversation=conversation, messages=to_log_messages)
+            messages = self._extend_conversation(
+                his_conversation=messages,
+                messages=to_log_messages
+            )
 
-        return solutions, conversation, None
+        return solutions, None, messages
 
     @override
     def _prepare_message_templates(self, *args, **kwargs):
         template_dict = load_prompt_template_file(self.template_file)
 
         self.system_template = SystemMessagePromptTemplate.from_template(
-            template=template_dict['system_template'],
+            template=template_dict.get('system_template', """"""),
             template_format='f-string'
         )
         self.human_verify_critic_template = HumanMessagePromptTemplate.from_template(
-            template=template_dict['human_verify_critic_template'],
+            template=template_dict.get('human_verify_critic_template', """"""),
             template_format="f-string"
         )
         self.human_verify_prompt_template = HumanMessagePromptTemplate.from_template(
-            template=template_dict['human_verify_prompt_template'],
+            template=template_dict.get('human_verify_prompt_template', """"""),
             template_format='f-string',
         )
 
     @override
     def _prepare_chat_template(
         self,
-        system_template=None,
-        human_template=None
-    ) -> ChatPromptTemplate | None:
-        """"""
-
-        if not (system_template or human_template):
+        system_template: Optional[Union[SystemMessagePromptTemplate, SystemMessage]] = None,
+        human_template: Optional[Union[HumanMessagePromptTemplate, HumanMessage]] = None
+    ) -> Union[ChatPromptTemplate, None]:
+        if system_template is None and human_template is None:
             return None
 
         return super()._prepare_chat_template(

@@ -8,7 +8,7 @@ import os
 import logging
 from copy import deepcopy
 from typing import Union, Generic, Optional, cast, TYPE_CHECKING, Literal
-from typing_extensions import override, overload
+from typing_extensions import override
 
 from langchain_core.prompts import (
     ChatPromptTemplate,
@@ -17,14 +17,12 @@ from langchain_core.prompts import (
 )
 from langgraph.config import RunnableConfig
 from langgraph.runtime import Runtime
-from langgraph.graph.state import END
-from langgraph.types import Command, Send
+from langgraph.types import Command
 
 from src.node import BaseNode
 from src.registry import RegisterAgent, RegisterNode
 from src.types import StateT, ContextT, InputT, OutputT
-from src.state.comp_5112 import CodingState
-from src.tool.func import execute_script, write_script
+from src.tool.comp_5112 import execute_script, write_script
 from src.utils import DirectionRouter
 from src.utils.decorator import add_note_docstring
 from src.utils.exception import ScriptWithError, ExceedFixErrorAttempts
@@ -32,6 +30,7 @@ from src.utils.file import load_prompt_template_file
 
 if TYPE_CHECKING:
     from langchain_core.prompt_values import PromptValue
+    from langchain_core.messages import SystemMessage, HumanMessage
     from src.message.parsed_tool_call import ParsedTollCallMessage
 
 logger = logging.getLogger(__name__)
@@ -66,7 +65,6 @@ class CodingAgent(
         self.script_folder = script_folder
         self.anchor_script_file = anchor_script_file
 
-        # shutil.rmtree(self.script_folder, ignore_errors=True)
         os.makedirs(self.script_folder, exist_ok=True)
         os.makedirs(os.path.split(self.anchor_script_file)[0], exist_ok=True)
 
@@ -86,9 +84,7 @@ class CodingAgent(
     ) -> Command[Literal['retriever']]:
         """"""
         logger.info(self.opening_symbols)
-        # logger.info(f"Number of messages: {len(state['messages'])}")
-
-        # -------------------------------------------------------------------
+        self.persistent_on_invoke = True
         # This block is always executed only one time
         # store state from the official call (either to 'improve' or to 'generate')
         if not self.copy_state:
@@ -99,26 +95,12 @@ class CodingAgent(
             self.copy_state['query_offset'] = 0
             self.copy_state['previous_scripts'] = []
             self.get_retrieved_docs = False
-            # self.copy_state.pop('has_docs', None)
-        else:
-            # 'fix' error task only can be called as inner call from 'improve' or 'generate' tasks
-            pass
 
-        # operate on each query
         try:
             formatted_prompt = self._prepare_prompt(state)
-            # TODO:
-            script, messages = self._generate(formatted_prompt)
-
-            # ------------error-free--------------------
-            # the generated script is error-free, an ending point of recursive calls
-            self.copy_state['current_script'] = script
-            self.copy_state['previous_scripts'].append(script)
-            self.copy_state['query_offset'] += 1
-            self.copy_state['messages'] = messages
-
+            script = self._generate(formatted_prompt)
         except ScriptWithError as e:
-            logger.info('‼️ ‼️ ‼️ ‼️ ‼️ ‼️ ⚠️ ⚠️ ⚠️ ⚠️ ⚠️️ Catch error. Call Retriever ⚠️ ⚠️ ⚠️ ⚠️ ⚠️️ ‼️‼️‼️‼️‼️‼️')
+            logger.info('‼️ ‼️ ‼️ ‼️ ‼️ ‼️ ⚠️ ⚠️ ⚠️ ⚠️ ⚠️️ Catch error. Call Retriever ⚠️ ⚠️ ⚠️ ⚠️ ⚠️️ ‼️ ‼️ ‼️ ‼️ ‼️ ‼️')
             self.fix_error_tries += 1
 
             # Stop graph when over attempts fix error
@@ -134,10 +116,22 @@ class CodingAgent(
             self._finish_session(_logger=logger)
             return e.command
 
+        # ------------------ error-free --------------------
+        # the generated script is error-free, an ending point of recursive calls
+        self.copy_state['current_script'] = script
+        self.copy_state['previous_scripts'].append(script)
+        self.copy_state['query_offset'] += 1
+        self.copy_state['messages'] = self.get_messages(self.config)
+
         # reset fix error tries after each query
         self.fix_error_tries = 0
         updates = self.copy_state
-
+        next_node: Literal[
+            'coding',
+            'critic',
+            'verification',
+            '__end__'
+        ]
         # continue with the next query and send it to coding
         if self.copy_state['query_offset'] < self.copy_state['num_queries']:
             # Continue with the next query
@@ -151,23 +145,21 @@ class CodingAgent(
                 'file_path': self.anchor_script_file,
             })
             # save all generated scripts
-            if self.save_scripts:
-                self._save_all_scripts()
+            save_all_scripts(
+                save_folder=self.script_folder,
+                scripts=self.copy_state['previous_scripts'],
+                caller=self.copy_state['caller']
+            )
 
             # identify the next node based on the caller (i.e. previous node), only base on original call.
-            # TODO:
-            # if self.copy_state['caller'] == 'planner':
-            #     next_node = 'critic'
-            # elif self.copy_state['caller'] == 'critic':
-            #     next_node = 'verification'
-            # elif self.copy_state['caller'] == 'verification':
-            #     next_node = 'verification'
-            # elif self.copy_state['caller'] == 'user':
-            #     next_node = 'verification'
-            # else:
-            next_node = END
+            next_node = 'critic'   # default when 'caller' == 'planner'
+            if self.copy_state['caller'] in ('critic', 'verification', 'user'):
+                next_node = 'verification'
 
+            # save final response
             updates['agent_response'] = updates['current_script']
+            updates['messages'] = self.get_messages()
+            # reset copy state
             self.copy_state = dict()
             logger.info("✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ Finish a call, move to next node ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅")
 
@@ -182,25 +174,12 @@ class CodingAgent(
             method='command'
         )
 
-    def _prepare_prompt(self, state: Union[dict, StateT]) -> PromptValue:
-        """Prepare prompt template base on task
-
-        Args:
-            state: state of the call
-        """
-        if state['coding_task'] == 'generate':
-            formatted_prompt = self._prepare_generate_prompt(state)
-        elif state['coding_task'] == "improve":
-            assert 'current_script' in state
-            formatted_prompt = self._prepare_improve_prompt(state)
-        else:
-            assert 'current_script' in state
-            formatted_prompt = self._prepare_fix_prompt(state)
-
-        return formatted_prompt
-
     @override
-    def _prepare_chat_template(self, system_template=None, human_template=None) -> Union[ChatPromptTemplate, None]:
+    def _prepare_chat_template(
+        self,
+        system_template: Optional[Union[SystemMessagePromptTemplate, SystemMessage]] = None,
+        human_template: Optional[Union[HumanMessagePromptTemplate, HumanMessage]] = None
+    ) -> Union[ChatPromptTemplate, None]:
         if system_template is None and human_template is None:
             return None
 
@@ -230,11 +209,27 @@ class CodingAgent(
             template_format="f-string",
         )
 
+    def _prepare_prompt(self, state: Union[dict, StateT]) -> PromptValue:
+        """Prepare prompt template base on task
+
+        Args:
+            state: state of the call
+        """
+        if state['coding_task'] == 'generate':
+            formatted_prompt = self._prepare_generate_prompt(state)
+        elif state['coding_task'] == "improve":
+            assert 'current_script' in state
+            formatted_prompt = self._prepare_improve_prompt(state)
+        else:
+            assert 'current_script' in state
+            formatted_prompt = self._prepare_fix_prompt(state)
+
+        return formatted_prompt
+
     def _prepare_generate_prompt(self, state):
         chat_template = self._prepare_chat_template(human_template=self.human_generate_template)
 
-        # that's called only when coding_task is 'generate
-        # when queries, from both of 'state' and 'copy_state', are subtasks
+        # that's called only when coding_task is 'generate'
         query_and_instruction = state['agent_response'][self.copy_state['query_offset']]
         query = query_and_instruction['query']
         instruction = query_and_instruction['instruction']
@@ -246,7 +241,7 @@ class CodingAgent(
         formatted_prompt = chat_template.invoke(
             input={
                 "task": query,
-                "previous_scripts": self._dump_scripts(self.copy_state['previous_scripts']),
+                "previous_scripts": dump_scripts(self.copy_state['previous_scripts']),
                 "instruction": instruction
             }
         )
@@ -275,27 +270,21 @@ class CodingAgent(
 
     def _prepare_improve_prompt(self, state):
         chat_template = self._prepare_chat_template(human_template=self.human_improve_template)
-
-        # query_and_instruction = self.copy_state['retrieved_docs'][self.copy_state['query_offset']]
-        # query = query_and_instruction['query']
-        # instruction = query_and_instruction['instruction']
         solution = state['agent_response'][self.copy_state['query_offset']]
 
         logger.info(
-            f"{state['coding_task']}: solution {1 + self.copy_state['query_offset']}/{self.copy_state['num_queries']}")
-        logger.info(f"solution: {solution}")
+            f"{state['coding_task']}: solution {1 + self.copy_state['query_offset']}/{self.copy_state['num_queries']}: {solution}")
         # ---------------------------------------------------
         formatted_prompt = chat_template.invoke(
             input={
                 'current_script': state['current_script'],
                 'solution': solution,
-                # 'summary': instruction
             }
         )
         # ---------------------------------------------------
         return formatted_prompt
 
-    def _generate(self, formatted_prompt):
+    def _generate(self, formatted_prompt: PromptValue):
         while True:
             # ---------------------------Actual generation------------------------------
             response = cast(
@@ -305,25 +294,20 @@ class CodingAgent(
                     config=self.config
                 )
             )
-            # call tool to write script
             script = response.get_field('script', '')
-            script = script.encode().decode("unicode_escape")
+            # call tool to write the script
             write_script.invoke({
                 "script": script,
                 "file_path": self.check_error_file
             })
 
-            # call tool to execute script
-            stdout = execute_script.invoke(input={'script': self.check_error_file})
-            messages = self.get_messages(self.config)
-            messages.append(response)
-
-            """Log conversation"""
-            # self.log_conversation(logger, messages)
+            # call tool to execute the script
+            stdout = execute_script.invoke(input={'script_path': self.check_error_file})
 
             # no error yielded
             if 'no error' in stdout.lower():
-                return script, messages
+                logger.info(stdout)
+                return script
             else:
                 # raise the call to 'retriever' agent to fix error
                 raise ScriptWithError(command=DirectionRouter.jump(
@@ -331,35 +315,42 @@ class CodingAgent(
                         'current_script': script,
                         'coding_task': 'fix',
                         'agent_response': [stdout, ],
-                        'messages': messages
+                        'messages': []
                     },
                     jump_to='retriever', method='command'
                 ))
 
-    def _dump_scripts(self, scripts):
-        if not scripts:
-            return []
-        script_string = '=' * 150
-        for script in scripts:
-            script_string += "\n```python\n"
-            script_string += script
-            script_string += "\n```\n"
-            script_string += '=' * 150 + '\n'
 
-        return script_string
+def dump_scripts(scripts: list[str]):
+    if not scripts:
+        return []
+    script_string = '=' * 150
+    for script in scripts:
+        script_string += "\n```python\n"
+        script_string += script
+        script_string += "\n```\n"
+        script_string += '=' * 150 + '\n'
 
-    def _save_all_scripts(self):
-        caller_folder = os.path.join(self.script_folder, self.copy_state["caller"])
-        os.makedirs(caller_folder, exist_ok=True)
+    return script_string
 
-        n = len(os.listdir(caller_folder))
-        save_dir = os.path.join(caller_folder, str(n))
-        os.makedirs(save_dir, exist_ok=True)
 
-        for i, script in enumerate(self.copy_state['previous_scripts']):
-            file = os.path.join(save_dir, f"script_{i}.py")
-            write_script.invoke({
-                'script': script,
-                'file_path': file,
-            })
-        logger.info(f'Write all generated scripts to folder "{save_dir}"')
+def save_all_scripts(
+    save_folder: str,
+    scripts: list[str],
+    caller: str
+):
+    caller_folder = os.path.join(save_folder, caller)
+    os.makedirs(caller_folder, exist_ok=True)
+
+    n = len(os.listdir(caller_folder))
+    save_dir = os.path.join(caller_folder, str(n))
+    os.makedirs(save_dir, exist_ok=True)
+
+    for i, script in enumerate(scripts):
+        file = os.path.join(save_dir, f"script_{i}.py")
+        write_script.invoke({
+            'script': script,
+            'file_path': file,
+        })
+
+    logger.info(f'Write all generated scripts to folder "{save_dir}"')

@@ -10,23 +10,25 @@ from typing import (
     Optional,
     TYPE_CHECKING,
     cast,
+    Union,
+    Literal,
     Any
 )
 from typing_extensions import override
 
 from langchain_core.runnables import RunnableConfig
-from langgraph.graph.state import END
 from langgraph.runtime import Runtime
 from langgraph.types import Command
 
 from src.registry import RegisterNode, RegisterAgent
 from src.types import InputT, StateT, OutputT, ContextT
-from src.state.comp_5112 import PlannerState
+from src.utils import DirectionRouter
 from src.node.base import BaseNode
-from src.base.utils import DirectionRouter
 from src.utils.decorator import add_note_docstring
 
 if TYPE_CHECKING:
+    from langchain_core.messages import SystemMessage
+    from langchain_core.prompts import SystemMessagePromptTemplate
     from src.message.parsed_tool_call import ParsedTollCallMessage
 
 logger = logging.getLogger(__name__)
@@ -38,7 +40,8 @@ logger = logging.getLogger(__name__)
 class PlannerAgent(
     BaseNode,
     Generic[StateT, ContextT, InputT, OutputT],
-    node_name='Planner', use_model=True
+    node_name='Planner',
+    use_model=True
 ):
     """The Planner Agent class"""
 
@@ -57,49 +60,56 @@ class PlannerAgent(
     @override
     def __call__(
         self,
-        state: PlannerState,
-        runtime: Optional[Runtime[ContextT]] = None,
+        state: StateT,
         config: Optional[RunnableConfig] = None,
+        *,
+        runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> OutputT | Command:
+    ) -> Command[Literal['retriever']]:
         """"""
-        config = self.config
-
         logger.info(self.opening_symbols)
-        logger.info(f"Message: {state['task']}")
+        self.persistent_on_invoke = True
+
+        logger.info(f"Task: {state['task']}")
         # -------------------------------------------------
-        formatted_prompt = self.human_template.format(
-            task=state['task'],
-            max_subtasks=self.max_subtasks,
+        selected_system_prompt = self._select_system_prompt()
+        prompt_template = self._prepare_chat_template(
+            system_template=selected_system_prompt,
+            human_template=self.human_template
         )
-        # -------------------------------------------------
-        # message = cast("ParsedTollCallMessage", self.invoke(
-        #     input=formatted_prompt,
-        #     # NOTE: use own config
-        #     config=config
-        # ))
-        #
-        # response = self.process_response(self.get_desired_result(
-        #     message=message,
-        #     keys_to_get='subtasks',
-        #     default=[]
-        # ))
-        # response = [f"{state['task']}. {r}" for r in response]
-        # messages = self.get_messages(config)
-        # -------------------------------------------------
-        response = [state['task']]
-        messages = [state['task']]
+        prompt_value = prompt_template.invoke(
+            input={
+                'task': state['task'],
+                'max_subtasks': self.max_subtasks
+            }
+        )
+
+        response = cast(
+            "ParsedTollCallMessage",
+            self.invoke(
+                input=prompt_value,
+                config=self.config
+            )
+        )
+
+        agent_response = response.get_field(field='subtasks', default=[])
+        logger.info(f'Number of subtasks: {len(agent_response)}')
+
+        update_state = dict()
+        update_state["agent_response"] = agent_response
+        update_state["subtasks"] = agent_response
+        update_state['coding_task'] = 'generate'
+        update_state['validating_prompt'] = state['task']
+        update_state['caller'] = 'planner'
+        update_state["messages"] = self.get_messages()
 
         self._finish_session(logger)
 
-        update_state = dict()
-        update_state['coding_task'] = 'generate'
-        update_state['is_sub_call'] = False
-        update_state['queries'] = response
-        update_state['validating_prompt'] = state['task']
-        update_state['has_docs'] = False
-        update_state['caller'] = 'planner'
-        update_state["messages"] = messages
+        return DirectionRouter.jump(
+            updates=update_state,
+            method='command',
+            jump_to='retriever'
+        )
 
-        # direct 'coding' agent to generate scripts
-        return DirectionRouter.goto(state=update_state, node='retriever', method='command')
+    def _select_system_prompt(self) -> Union[SystemMessage, SystemMessagePromptTemplate]:
+        return self.system_template
