@@ -7,13 +7,13 @@ from __future__ import annotations
 import logging
 from typing import Any, TYPE_CHECKING
 
-from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import FAISS
 
 from src.registry import RegisterTool
 from src.tool.base import BaseToolSchema
 from src.tool.schema import QueryRetrieveArgsSchema
 from src.tool.base import BaseDefinedTool
+from src.utils.embeddings import load_openai_embeddings
 
 if TYPE_CHECKING:
     from langchain_community.docstore.document import Document
@@ -35,26 +35,17 @@ class QueryRetriever(BaseDefinedTool):
         super().__init__(**kwargs)
 
         assert 'embedding_name' in kwargs
-        self.embedding_name: str = kwargs['embedding_name']
         assert 'db_path' in kwargs
-        self.db_path: str = kwargs['db_path']
         self.doc_dir: str | None = kwargs.get('doc_dir', None)
 
-        # TODO: consider other model
-        # TODO: add utils to load embedding models
-        gpt4all_kwargs = {'allow_download': 'True'}
-        # NOTE: use
-        self.embedding = GPT4AllEmbeddings(
-            model_name=kwargs['embedding_name'],
-            gpt4all_kwargs=gpt4all_kwargs,
-            client=None
-        )
+        # TODO: consider other models
+        embeddings = load_openai_embeddings(embedding_name=kwargs['embedding_name'])
 
         # TODO: consider other db
         # TODO: add utils to load db
         self.db = FAISS.load_local(
-            folder_path=self.db_path,
-            embeddings=self.embedding,
+            folder_path=kwargs['db_path'],
+            embeddings=embeddings,
             allow_dangerous_deserialization=True,
         )
         self.retrieving_engine = self.db.as_retriever(
