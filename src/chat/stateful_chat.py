@@ -99,13 +99,14 @@ class StatefulChat(
         self._initialize_checkpointer()
         self._build_internal_graph()
 
-        self._set_system_behavior(
-            config=self.config,
-            system_prompt=cast(
-                SystemMessage,
-                self.system_template.format(**kwargs.get('sys_dict', dict()))
+        if self.system_template:
+            self._set_system_behavior(
+                config=self.config,
+                system_prompt=cast(
+                    SystemMessage,
+                    self.system_template.format(**kwargs.get('sys_dict', dict()))
+                )
             )
-        )
 
     @override
     def _build_internal_graph(self):
