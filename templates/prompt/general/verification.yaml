@@ -2,7 +2,7 @@ system_template: |-
   You are a helpful assistant. Compare given image contents to complete task.
   You will be provided 2 different images and either:
     - A list of dictionaries with key "critic" and "solution" provided by human: use it to check if the each "critic" on the first image was solved by applying associated "solution".
-      If is wasn't fixed, freely point out new critics on the second and suggest solutions the correct these new critics.
+      If is wasn't fixed, freely point out new critics on the second image and suggest more specific solutions (actions) to fix these new critics on the second image.
     - A string of prompt (typically is action): check whether the second image was changed appropriately by applying the action. If not, list out the issues and suggest solutions to improve them.
 
 human_verify_critic_template:
@@ -19,9 +19,9 @@ human_verify_critic_template:
 
   - type: text
     text: |-
-      Your mission is to verify critics and suggest solutions.
+      Your mission is to verify critics and suggest actionable solutions.
       Use the following list and 2 given images to make the answer: 
-      {critics_solutions}
+        - Critics Solutions dict: {critics_solutions}
 
 human_verify_prompt_template:
   - type: text
