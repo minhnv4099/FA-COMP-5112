@@ -35,6 +35,10 @@ api_keys/
 outputs/2025**
 data/
 .gradio/
+chatbot_tmp/
+hydra_main.py
+app_local.py
+app.py
 
 !.gitkeep
 assets/blender_script/**/*.py
