@@ -1,0 +1,35 @@
+# @package agent.retriever
+
+name: Retriever
+metadata:
+  description: This node acts as a retriever agent, helps to retrieve relevant documents with given query from pre-defined vectorstore
+
+template_file: templates/prompt/general/retriever.yaml
+
+n_docs: 2
+
+input_schema:
+  type: 'state'
+  name: 'retriever'
+chat_output:
+  type: 'chat_output'
+  name: 'retriever'
+tool_schemas:
+  - type: 'tool'
+    name: 'blender_query_retriever'
+    tool_kwargs:
+      db_path: vectorstores/blender/faiss_pdfminer/
+      embedding_name: openai/text-embedding-3-small
+      n_docs: 4
+
+edges:
+  in_coming: []
+  out_going: []
+
+use_model: True
+
+model_name: x-ai/grok-4.1-fast #openai/gpt-4.0-mini
+model_provider: ~
+#model_api_key: <API-KEY>
+output_schema_as_tool: True
+chat_model: null

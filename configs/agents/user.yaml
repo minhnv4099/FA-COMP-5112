@@ -1,0 +1,23 @@
+# @package agent.user
+
+name: User
+metadata:
+  description: This node acts as an user agent
+
+input_schema:
+  type: state
+  name: user
+
+tool_schemas: [ ]
+
+edges:
+  in_coming: [ ]
+  out_going:
+    - end
+
+use_model: False
+
+model_name: null
+model_provider: null
+#model_api_key: <API-KEY>
+chat_model: null
