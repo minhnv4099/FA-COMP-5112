@@ -13,7 +13,7 @@ from src.registry import RegisterTool
 from src.tool.base import BaseToolSchema
 from src.tool.schema import QueryRetrieveArgsSchema
 from src.tool.base import BaseDefinedTool
-from src.utils.embeddings import load_openai_embeddings
+from src.utils.embeddings import load_openai_embeddings, load_gpt4all_embeddings
 
 if TYPE_CHECKING:
     from langchain_community.docstore.document import Document
@@ -39,7 +39,10 @@ class QueryRetriever(BaseDefinedTool):
         self.doc_dir: str | None = kwargs.get('doc_dir', None)
 
         # TODO: consider other models
-        embeddings = load_openai_embeddings(embedding_name=kwargs['embedding_name'])
+        if 'openai' in kwargs['embedding_name']:
+            embeddings = load_openai_embeddings()
+        else:
+            embeddings = load_gpt4all_embeddings()
 
         # TODO: consider other db
         # TODO: add utils to load db

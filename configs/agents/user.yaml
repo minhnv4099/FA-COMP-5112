@@ -12,8 +12,7 @@ tool_schemas: [ ]
 
 edges:
   in_coming: [ ]
-  out_going:
-    - end
+  out_going: [ ]
 
 use_model: False
 

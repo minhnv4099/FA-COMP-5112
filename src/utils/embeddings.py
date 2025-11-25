@@ -14,9 +14,10 @@ def load_openai_embeddings(
     api_key: str = None,
     base_url: str = None
 ):
-    from src.utils import find_load_env
+    if 'OPENROUTER_API_KEY' not in os.environ or 'BASE_URL' not in os.environ:
+        from src.utils import find_load_env
 
-    find_load_env()
+        find_load_env()
 
     api_key = api_key if api_key else os.getenv('OPENROUTER_API_KEY')
     base_url = base_url if base_url else os.getenv('BASE_URL')

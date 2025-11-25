@@ -6,8 +6,6 @@ metadata:
 
 template_file: templates/prompt/general/retriever.yaml
 
-n_docs: 2
-
 input_schema:
   type: 'state'
   name: 'retriever'
@@ -20,7 +18,7 @@ tool_schemas:
     tool_kwargs:
       db_path: vectorstores/blender/faiss_pdfminer/
       embedding_name: openai/text-embedding-3-small
-      n_docs: 4
+      n_docs: 2
 
 edges:
   in_coming: []

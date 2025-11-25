@@ -27,7 +27,7 @@ edges:
 
 use_model: True
 
-model_name: ${agent.critic.model_name} #openai/gpt-4.0-mini # ${agent.critic.model_name}
+model_name: ${agent.critic.model_name}
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

@@ -1,4 +1,4 @@
-bpy.context.scene.render.engine = 'BLENDER_EEVEE'
+bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'
 
 for cam in cameras:
     scene.camera = cam["object"]

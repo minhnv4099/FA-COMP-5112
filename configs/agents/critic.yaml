@@ -28,7 +28,7 @@ edges:
 
 use_model: True
 
-model_name: x-ai/grok-4.1-fast #openai/gpt-4.0-mini
+model_name: openai/gpt-4o-mini
 model_provider: ~
 #model_api_key: <API-KEY>
 output_schema_as_tool: True

@@ -37,14 +37,13 @@ system_template: |-
   - Not setup cameras
   
   Render Engine:
-  - Use ```bpy.context.scene.render.engine = 'BLENDER_EEVEE'```
+  - Use ```bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'```
+  
   Code Organization, structure script into functions:
   - clean_scene()
   - create_model()
-  - create_ground_plane()
   - apply_material(obj)
   - setup_lighting()
-  - setup_camera()
   - main() to orchestrate.
   
   Include docstrings for clarity.
@@ -60,12 +59,7 @@ system_template: |-
   - Do not use ShaderNodeTexWood
 
 human_generate_template: |-
-  Help me to write Blender code using below information by using previous scripts, and summary of the subtask.
-  Add two lines to the file after importing libraries if needed:
-    ```<python block>
-        bpy.ops.object.select_all(action='SELECT')
-        bpy.ops.object.delete(use_global=False)
-    ```
+  Help me to write Blender code using below information by using previous scripts, and instruction of the subtask.
   MUST combine appropriate parts from them in to the new generated script.
   Use below information:
     - TASK: {task}

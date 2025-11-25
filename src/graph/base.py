@@ -273,7 +273,7 @@ class BaseGraph(
 
     def resume(
         self,
-        input: Union[StateT, InputT, dict],
+        input: Union[StateT, InputT, dict, str],
         config: Optional[RunnableConfig] = None,
     ):
         return self.invoke(

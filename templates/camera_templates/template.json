@@ -42,7 +42,7 @@
     "filepath": "{save_dir}/Camera.003"
   },
   {
-    "name": "Camera.006",
+    "name": "Camera.004",
     "location": [
       14.206260681152344,
       12.341538429260254,
@@ -53,6 +53,6 @@
       2.4365820650018577e-07,
       2.271897315979004
     ],
-    "filepath": "{save_dir}/Camera.006"
+    "filepath": "{save_dir}/Camera.004"
   }
 ]
