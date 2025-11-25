@@ -81,7 +81,7 @@ class CodingAgent(
         *,
         runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> Command[Literal['retriever']]:
+    ) -> Command[Literal['retriever', 'critic', 'verification']]:
         """"""
         logger.info(self.opening_symbols)
         self.persistent_on_invoke = True
@@ -128,9 +128,9 @@ class CodingAgent(
         updates = self.copy_state
         next_node: Literal[
             'coding',
+            'retriever',
             'critic',
             'verification',
-            '__end__'
         ]
         # continue with the next query and send it to coding
         if self.copy_state['query_offset'] < self.copy_state['num_queries']:
@@ -294,6 +294,7 @@ class CodingAgent(
                     config=self.config
                 )
             )
+
             script = response.get_field('script', '')
             # call tool to write the script
             write_script.invoke({
@@ -302,6 +303,7 @@ class CodingAgent(
             })
 
             # call tool to execute the script
+            logger.info('Executing to check error')
             stdout = execute_script.invoke(input={'script_path': self.check_error_file})
 
             # no error yielded

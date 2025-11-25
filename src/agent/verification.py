@@ -60,7 +60,7 @@ class VerificationAgent(
     def __init__(
         self,
         *args,
-        verification_attempts: int = None,
+        verification_attempts: int = 1,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
@@ -76,7 +76,7 @@ class VerificationAgent(
         *,
         runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> Command:
+    ) -> Command[Literal['coding', 'user']]:
         """"""
         logger.info(self.opening_symbols)
         self.persistent_on_invoke = True
@@ -122,7 +122,7 @@ class VerificationAgent(
             # no critic from critic agent or use need to be solved, i.e. all solutions/change are satisfied
             next_node = 'user'
             self.verification_tries = 0
-        next_node = '__end__'
+
         update_state = {
             # used by Coding agent
             'agent_response': solutions,
@@ -133,7 +133,7 @@ class VerificationAgent(
             # Used by User Agent to terminate and return final results
             'rendered_images': modified_rendered_images,
             'msg': state.get('msg', ''),
-            'message': []
+            'messages': messages
         }
 
         self._finish_session(logger)
@@ -201,7 +201,7 @@ class VerificationAgent(
                 )
             )
 
-            agent_response = response.get_field(field='ss_list')
+            agent_response = response.get_field(field='ss_list', default=[])
             for c in agent_response:
                 if not c['satisfied']:
                     new_critic_satisfied_solution_dict[i].append({
@@ -257,8 +257,8 @@ class VerificationAgent(
                 )
             )
 
-            agent_response = response.get_field('ss_list', default=dict())
-            solutions = [d['solution'] for d in agent_response[0] if not d['satisfied']]
+            agent_response = response.get_field('ss_list', default=[])
+            solutions = [d['solution'] for d in agent_response if not d['satisfied']]
 
             to_log_messages = [
                 *chat_template.invoke({

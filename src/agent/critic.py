@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 class CriticAgent(
     BaseNode,
     Generic[StateT, ContextT, InputT, OutputT],
-    node_name='Planner',
+    node_name='Critic',
     use_model=True
 ):
     """The Critic Agent class"""
@@ -82,7 +82,7 @@ class CriticAgent(
         *,
         runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> Command:
+    ) -> Command[Literal['coding', 'user']]:
         """"""
         logger.info(self.opening_symbols)
         self.persistent_on_invoke = True
@@ -122,7 +122,7 @@ class CriticAgent(
             )
 
             # -----------------------------------------------
-            agent_response = response.get_field()
+            agent_response = response.get_field(field='critic_solution_list')
             critics_solutions_dict[i] = agent_response
             solutions.extend([d['solution'] for d in agent_response if not d['satisfied']])
 
@@ -143,11 +143,11 @@ class CriticAgent(
 
         logger.info(f"Solutions by Critic: {len(solutions)} -- {solutions}")
 
-        next_node: Literal['coding', 'user', '__end__']
+        next_node: Literal['coding', 'user']
         if solutions:
             next_node = 'coding'
         else:
-            next_node = '__end__'
+            next_node = 'user'
 
         update_state = {
             'agent_response': solutions,
