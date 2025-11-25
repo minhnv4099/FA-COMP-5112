@@ -34,6 +34,7 @@ from src.types import (
 )
 from src.chat.base import BaseChat, LanguageModelInput
 from src.chat.mixin import ToolCallChatMixin
+from src.chat_output.comp_5112 import BaseOutput
 from src.message.parsed_tool_call import ParsedTollCallMessage
 from src.utils.decorator import must_override, add_note_docstring
 from src.utils.exception import NotFoundTool
@@ -82,11 +83,7 @@ class ToolCallGenerateChat(
         # bind schemas to the chat model
         if self.chat_model:
             schemas = self._validate_schemas()
-            self.chat_model = self.chat_model.bind_tools(
-                tools=schemas,
-                strict=True,
-                tool_choice='any'
-            )
+            self.bind_schemas(schemas)
 
     @override
     def invoke(
@@ -155,6 +152,17 @@ class ToolCallGenerateChat(
             ...
 
         return schemas
+
+    def bind_schemas(self, schemas: list[ToolSchema]):
+        tool_choice = 'any'
+        if len(schemas) == 1 and issubclass(schemas[0], BaseOutput):
+            tool_choice = True
+
+        self.chat_model = self.chat_model.bind_tools(
+            tools=schemas,
+            strict=True,
+            tool_choice=tool_choice,
+        )
 
     def fetch_schema(
         self,
