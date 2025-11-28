@@ -57,7 +57,7 @@ class StatefulChat(
 ):
     """The Stateful chat can retain the conversation"""
 
-    config: Union[RunnableConfig, None]
+    config: Optional[RunnableConfig]
     """Config containing ``thread_id``"""
 
     graph: CompiledStateGraph
@@ -103,15 +103,15 @@ class StatefulChat(
             self._set_system_behavior(
                 config=self.config,
                 system_prompt=cast(
-                    SystemMessage,
-                    self.system_template.format(**kwargs.get('sys_dict', dict()))
+                    "SystemMessage",
+                    self.system_template.format(**kwargs.get('system_template_dict', dict()))
                 )
             )
 
     @override
     def _build_internal_graph(self):
         # TODO: consider using self-defined graph "src/base/graph.py"
-        self.graph_builder = StateGraph[StateT, ContextT, ..., ...](
+        self.graph_builder = StateGraph[StateT, ContextT, ..., OutputT](
             state_schema=self.state_schema,
             context_schema=self.context_schema,
             input_schema=self.state_schema,
@@ -165,6 +165,26 @@ class StatefulChat(
         return {'messages': [response,]}
 
     @override
+    def validate_input(
+        self,
+        input: LanguageModelInput,
+        config: Optional[Union[RunnableConfig, dict]] = None
+    ) -> Union[dict, AIMessage]:
+        if isinstance(input, dict):
+            input = input
+        elif isinstance(input, str):
+            if len(input) == 0:
+                return AIMessage(content='Error: Input must have at least 1 token')
+            input = {'messages': input}
+        elif isinstance(input, PromptValue):
+            input = {'messages': input.to_messages()}
+        elif (isinstance(input, BaseMessage) or
+              (isinstance(input, list) and all(isinstance(m, BaseMessage) for m in input))):
+            input = {'messages': input}
+
+        return input
+
+    @override
     def invoke(
         self,
         input: LanguageModelInput,
@@ -191,18 +211,11 @@ class StatefulChat(
             The generated response.
         """
         config = config if config else self.config
+        input = self.validate_input(input, config)
 
-        # TODO: can move to utils
-        if isinstance(input, dict):
-            input = input
-        elif isinstance(input, str):
-            if len(input) == 0:
-                return AIMessage(content='Error: Input must have at least 1 token')
-            input = {'messages': input}
-        elif isinstance(input, PromptValue):
-            input = {'messages': input.to_messages()}
-        elif isinstance(input, (BaseMessage, Sequence, list)):
-            input = {'messages': input}
+        # AI message with error content
+        if isinstance(input, AIMessage):
+            return input
 
         output = self.graph.invoke(
             input=input,  # type: ignore
@@ -324,7 +337,7 @@ class ToolCallGenerateStatefulChat(
             context=context
         )
 
-    @add_note_docstring("A node of the graph")
+    @add_note_docstring("A node of the internal graph")
     def tool_call(
         self,
         state: Union[StateT],
@@ -332,7 +345,7 @@ class ToolCallGenerateStatefulChat(
         *,
         runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
-    ) -> Union[dict, None]:
+    ) -> Union[dict[str, list[ParsedTollCallMessage]], None]:
         """A node handling tool calls in last messages. To execute tool or parse args as structured output"""
         last_ai_message = state['messages'][-1]
         tool_based_messages = [
@@ -346,6 +359,7 @@ class ToolCallGenerateStatefulChat(
 @RegisterChat(module_path=__name__, name='tool_call_execute_stateful_chat')
 class ToolCallExecuteStatefulChat(
     ToolCallGenerateStatefulChat,
+    # Inherit `_internal_tool_call`
     ToolCallExecuteChat,
     Generic[StateT, ContextT, OutputT, ToolSchema]
 ):

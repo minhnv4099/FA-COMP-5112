@@ -64,6 +64,9 @@ class BaseChat(ChatMixin):
     model_provider: str
     """Provide of used model (e.g. ``openai``, ``google``, ``openrouter``)"""
 
+    chat_model: BaseChatModel
+    """"""
+
     endpoint_url: str
     """The endpoint url. Can be used to initialize chat model outside"""
 
@@ -151,13 +154,13 @@ class BaseChat(ChatMixin):
         self._check_chat_model()
 
         # initialize model
-        if self.use_model:
+        if self.use_model and not self.chat_model:
             self._initialize_model()
 
         # prompt templates
         self.template_file = template_file
         # logger.info(f"{self.name} loads templates from: '{self.template_file}'")
-        self._prepare_message_templates()
+        self._prepare_message_templates(template_file=template_file)
         self.chat_template = self._prepare_chat_template()
 
         # usage metadata
@@ -180,6 +183,7 @@ class BaseChat(ChatMixin):
                 f"Use 'openrouter', default")
             self.model_provider = 'openrouter'
 
+    # TODO: accept pre-defined chat model
     def _check_chat_model(self):
         if self.chat_model is not None:
             logger.critical(f"Now we only accept instantiating `chat_model` from 'model_name'. Pass this value")
@@ -188,7 +192,6 @@ class BaseChat(ChatMixin):
         """Initialize model based on ``model_name``, ``model_provider``"""
 
         self.endpoint_url = PROVIDER_TO_BASE_URL[self.model_provider]
-
         if self.model_api_key is None:
             self.model_api_key = os.getenv(PROVIDER_TO_ENV[self.model_provider])
 
@@ -196,7 +199,7 @@ class BaseChat(ChatMixin):
             model=self.model_name,
             openai_api_base=self.endpoint_url,  # type: ignore
             openai_api_key=self.model_api_key,  # type: ignore
-            temperature=0.7,
+            temperature=0.5,
             rate_limiter=InMemoryRateLimiter(
                 requests_per_second=0.1,
                 check_every_n_seconds=0.1,
@@ -218,7 +221,26 @@ class BaseChat(ChatMixin):
         **kwargs
     ):
         """"""
-        raise NotImplementedError("Use 'invoke()' to interact with chat.")
+        raise NotImplementedError("Use 'invoke()' to interact with chat model.")
+
+    def validate_input(self, input: LanguageModelInput, config: Optional[Union[RunnableConfig, dict]] = None):
+        if isinstance(input, dict):
+            input = self.chat_template.invoke(
+                input=input,
+                config=config
+            )
+        elif isinstance(input, str):
+            if len(input) == 0:
+                return AIMessage(content='Error: Input must have at least 1 token')
+            input = self.chat_template.invoke(
+                input={'message': input},
+                config=config
+            )
+        elif (isinstance(input, (PromptValue, BaseMessage)) or
+              (isinstance(input, list) and all(isinstance(m, BaseMessage) for m in input))):
+            input = input
+
+        return input
 
     def invoke(
         self,
@@ -242,21 +264,10 @@ class BaseChat(ChatMixin):
         Returns:
             The generated response.
         """
-        # TODO: can move to utils
-        if isinstance(input, dict):
-            input = self.chat_template.invoke(
-                input=input,
-                config=config
-            )
-        elif isinstance(input, str):
-            if len(input) == 0:
-                return AIMessage(content='Error: Input must have at least 1 token')
-            input = self.chat_template.invoke(
-                input={'message': input},
-                config=config
-            )
-        elif isinstance(input, (PromptValue, BaseMessage, Sequence, list)):
-            input = input
+        input = self.validate_input(input, config)
+        # AI message with error content
+        if isinstance(input, AIMessage):
+            return input
 
         return self.internal_invoke(
             input=input,
@@ -292,17 +303,17 @@ class BaseChat(ChatMixin):
         return ai_message
 
     @must_override
-    def _prepare_message_templates(self, *args, **kwargs):
+    def _prepare_message_templates(self, template_file: str, *args, **kwargs):
         """Prepare message templates for system and human roles.
 
         This method only works for Chat Assistance with **ONE** system prompt and **ONE** human prompt. \n
         Override it by doing nothing if the chat has other message templates.
         """
-        templates_dict = load_prompt_template_file(self.template_file)
+        templates_dict = load_prompt_template_file(template_file)
 
         self.system_template = SystemMessagePromptTemplate.from_template(
             template=templates_dict.get(
-                'system_template',
+                "system_template",
                 "You are a very helpful assistance."
             ),
             template_format='f-string'

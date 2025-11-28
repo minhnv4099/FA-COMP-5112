@@ -46,6 +46,7 @@ if TYPE_CHECKING:
         ToolMessage,
         BaseMessage,
     )
+    from src.types import SchemaLike
     from src.tool.base import BaseDefinedTool
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ class ToolCallGenerateChat(
     tool_schemas: list[Union[ToolSchema, dict]]
     """Tool schemas"""
 
-    chat_output: list[Union[ToolSchema, dict]]
+    chat_output: Union[ToolSchema, dict]
     """Output schema"""
 
     def __init_subclass__(cls, **kwargs):
@@ -73,7 +74,7 @@ class ToolCallGenerateChat(
         self,
         *args,
         tool_schemas: list[Union[ToolSchema, dict]] = None,
-        chat_output: list[Union[ToolSchema, dict]] = None,
+        chat_output: Union[ToolSchema, dict] = None,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
@@ -92,7 +93,7 @@ class ToolCallGenerateChat(
         config: Optional[Union[RunnableConfig, dict]] = None,
         *,
         stop: Optional[list[str]] = None
-    ) -> AIMessage:
+    ) -> Union[AIMessage, ParsedTollCallMessage]:
         """"""
         ai_message = super().invoke(
             input=input,
@@ -108,8 +109,12 @@ class ToolCallGenerateChat(
             for tool_call in ai_message.tool_calls
         ]
 
-        return self._combine_message(
-            *tool_based_messages)
+        # return an AIMessage with all tool calls as content
+        if len(tool_based_messages) > 1:
+            return self._combine_message(
+                *tool_based_messages)
+
+        return tool_based_messages[0]
 
     @add_note_docstring('Parse tool call to formated output')
     def _internal_tool_call(
@@ -139,17 +144,11 @@ class ToolCallGenerateChat(
         self.chat_output = self._convert_to_list(seq=self.chat_output)
         # get all schemas, do matter output schema and tool schema
         # let model know schemas
-        schemas = [
-            self.fetch_schema(schema=schema)
-            for schema in self.tool_schemas + self.chat_output
-        ]
+        schemas = self.fetch_schemas(self.tool_schemas + self.chat_output)
         schemas = list(filter(lambda x: x, schemas))
         if schemas:
-            # logger.warning(f"The schemas '{schemas}' are just (or treated as) tool schemas, which requires "
-            #                f"'ToolMessage' after 'AIMessage' that have tool calls with associative tool_call_id.")
             logger.info(f"The '{self.name}' has access to {len(schemas)} schemas"
                         f" ({len(self.tool_schemas)} tools + {len(self.chat_output)} outputs).")
-            ...
 
         return schemas
 
@@ -158,20 +157,24 @@ class ToolCallGenerateChat(
         if len(schemas) == 1 and issubclass(schemas[0], BaseOutput):
             tool_choice = True
 
-        self.chat_model = self.chat_model.bind_tools(
+        self.chat_model = self.chat_model.bind_tools(   # type: ignore
             tools=schemas,
             strict=True,
             tool_choice=tool_choice,
         )
 
-    def fetch_schema(
-        self,
-        schema: Union[dict, ToolSchema]
-    ) -> Union[None, ToolSchema]:
+    def fetch_schemas(self, schemas: list[Union[ToolSchema, dict]]) -> list[SchemaLike]:
+        return [
+            self.fetch_schema(schema=schema)
+            for schema in schemas
+        ]
+
+    def fetch_schema(self, schema: Union[dict, ToolSchema]) -> Union[None, SchemaLike]:
         if not isinstance(schema, OmegaDict):
             return schema
 
         schema_obj = fetch_registered(metadata=schema)
+        # make sure schema's name and object's name are similar
         schema_obj.name = schema['name']
 
         return schema_obj
@@ -190,7 +193,9 @@ class ToolCallExecuteChat(
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.tools = self._get_tool_from_schemas(self.tool_schemas)
+        self.tools = get_tools_from_schemas(self.tool_schemas)
+        if self.tools:
+            logger.info(f"The '{self.name}' can execute {len(self.tools)} tools.")
 
     @add_note_docstring('Execute tool call')
     @override
@@ -210,21 +215,17 @@ class ToolCallExecuteChat(
             # ParsedTollCallMessage
             return super()._internal_tool_call(tool_call=tool_call)
 
-    def _get_tool_from_schemas(
-        self,
-        tool_schemas: Sequence[Union[ToolSchema, dict]]
-    ) -> dict[str, BaseDefinedTool]:
-        executable_tools = dict()
-        for schema in tool_schemas:
-            if schema['type'] == 'tool':
-                try:
-                    executable_tools[schema['name']] = load_tool(
-                        name=schema['name'],
-                        **schema.get('tool_kwargs', dict())
-                    )
-                except NotFoundTool as e:
-                    continue
 
-        if executable_tools:
-            logger.info(f"The '{self.name}' can execute {len(executable_tools)} tools.")
-        return executable_tools
+def get_tools_from_schemas(tool_schemas: Sequence[Union[ToolSchema, dict]]) -> dict[str, BaseDefinedTool]:
+    executable_tools = dict()
+    for schema in tool_schemas:
+        if schema['type'] == 'tool':
+            try:
+                executable_tools[schema['name']] = load_tool(
+                    name=schema['name'],
+                    **schema.get('tool_kwargs', dict())
+                )
+            except NotFoundTool as e:
+                continue
+
+    return executable_tools
