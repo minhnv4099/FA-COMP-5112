@@ -38,7 +38,7 @@ class MCPClient:
     @staticmethod
     def check_session(func: callable):
         @functools.wraps(func)
-        def wrapped_func(self: MCPClient, *args, **kwargs):
+        def wrapped_func(self, *args, **kwargs):
             if self.session is None:
                 raise ValueError(f"The session is now None, call 'connect_to_server' to connect to server before calling '{func.__name__}'")
             return func(self, *args, **kwargs)
