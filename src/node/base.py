@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 @RegisterNode(module_path=__name__, name='base_node')
 class BaseNode(
     LoopReactAgent,
-    Generic[StateT, ContextT, InputT, OutputT]
+    Generic[StateT, ContextT, InputT, OutputT, ToolSchema]
 ):
     """The Base Node class"""
 
@@ -70,14 +70,3 @@ class BaseNode(
     ):
         raise NotImplementedError
 
-    def _extend_conversation(
-        self,
-        his_conversation: list[BaseMessage],
-        messages: list[BaseMessage],
-    ) -> Sequence[BaseMessage]:
-        if not his_conversation:
-            messages.extend(messages)
-        else:
-            his_conversation.extend(messages[1:])
-
-        return his_conversation
