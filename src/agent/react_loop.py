@@ -25,7 +25,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command
 
 from src.registry import RegisterAgent
-from src.types import StateT, ContextT, OutputT, ToolSchema
+from src.types import StateT, ContextT, OutputT, ToolSchema, OmegaDict
 from src.chat.stateful_chat import ToolCallExecuteStatefulChat, LanguageModelInput
 from src.utils.decorator import add_note_docstring
 
@@ -56,20 +56,29 @@ class LoopReactAgent(
         self,
         *args,
         persistent_on_invoke: Optional[bool] = True,
+        option: Literal['1llm', '2llm'] = '1llm',
         **kwargs
     ):
+        if option == '1llm':
+            self._build_internal_graph = self._build_internal_graph_option_1
+        else:
+            self._build_internal_graph = self._build_internal_graph_option_2
+
         super().__init__(*args, **kwargs)
+        if self.use_model and option == '2llm':
+            self._separate_models()
+            self.chat_model = self.chat_model_with_tools  # type: ignore
 
         self.persistent_on_invoke = persistent_on_invoke
 
     def _reset_thread(self):
         self.config['configurable']['thread_id'] = uuid.uuid1()
 
-    def _build_internal_graph(self):
+    def _build_internal_graph_option_1(self):
         # TODO: consider using self-defined graph "src/base/graph.py"
         self.graph_builder = StateGraph[StateT, ContextT, ..., OutputT](
             state_schema=self.state_schema,
-            context_schema=self.state_schema,
+            context_schema=self.context_schema,
             input_schema=self.state_schema,
             output_schema=self.output_schema
         )
@@ -96,6 +105,49 @@ class LoopReactAgent(
         # self.graph_builder.add_edge('model_call', '_response')
         # self.graph_builder.add_edge('_response', END)
         self.graph_builder.add_edge('tool_call', 'model_call')
+
+        self.graph = self.graph_builder.compile(
+            checkpointer=self.checkpointer,
+            name=self.name
+        )
+
+    def _build_internal_graph_option_2(self):
+        # TODO: consider using self-defined graph "src/base/graph.py"
+        self.graph_builder = StateGraph[StateT, ContextT, ..., OutputT](
+            state_schema=self.state_schema,
+            context_schema=self.context_schema,
+            input_schema=self.state_schema,
+            output_schema=self.output_schema
+        )
+
+        self.graph_builder.add_node(
+            node='model_call',
+            action=self.model_call,
+            metadata=None
+        )
+
+        self.graph_builder.add_node(
+            node='observe_and_decide',
+            action=self.observe_and_decide,
+            metadata=None
+        )
+        self.graph_builder.add_node(
+            node='tool_call',
+            action=self.tool_call,
+            metadata=None
+        )
+
+        self.graph_builder.add_node(
+            node='response',
+            action=self._response,
+            metadata=None
+        )
+
+        self.graph_builder.add_edge(START, 'model_call')
+        self.graph_builder.add_edge('model_call', 'observe_and_decide')
+        self.graph_builder.add_edge('model_call', 'response')
+        self.graph_builder.add_edge('tool_call', 'model_call')
+        self.graph_builder.add_edge('response', END)
 
         self.graph = self.graph_builder.compile(
             checkpointer=self.checkpointer,
@@ -130,20 +182,11 @@ class LoopReactAgent(
         if self.persistent_on_invoke:
             self._reset_thread()
 
-        # TODO: can move to mixin
-        if isinstance(input, str):
-            if len(input) == 0:
-                return AIMessage(content='Error: Input must have at least 1 token')
-            raise ValueError("input can not be str")
-        elif isinstance(input, dict):
+        if isinstance(input, dict):
             input = self.chat_template.invoke(
                 input=input,
                 config=config
             )
-        elif isinstance(input, PromptValue):
-            input = {'messages': input.to_messages()}
-        elif isinstance(input, (BaseMessage, Sequence, list)):
-            input = {'messages': input}
 
         return super().invoke(
             input=input,
@@ -191,15 +234,21 @@ class LoopReactAgent(
 
     @add_note_docstring("Used for option 2 LLMs")
     def _separate_models(self):
-        self.chat_model = self.chat_model.bind_tools(
-            tools=self.tool_schemas,
+        tool_schemas = self.fetch_schemas(self.tool_schemas)
+        self.chat_model_with_tools = self.chat_model.bind_tools(
+            tools=tool_schemas,
             strict=False,
-            tool_choice='any'
         )
-        self.chat_model_with_outputs = self.chat_model.bind_tools(
-            tools=self.chat_output,
+
+        if isinstance(structured_output_schema := self.chat_output, OmegaDict):
+            structured_output = self.fetch_schema(structured_output_schema)
+        else:
+            structured_output = self.chat_output
+
+        self.chat_model_with_output = self.chat_model.bind_tools(
+            tools=[structured_output,],
             strict=True,
-            tool_choice='any'
+            tool_choice='required'
         )
 
     @add_note_docstring("Used for option 2 LLMs")
@@ -211,11 +260,11 @@ class LoopReactAgent(
         runtime: Optional[Runtime[ContextT]] = None,
         **kwargs
     ) -> dict:
-        response = self.chat_model_with_outputs.invoke(
-            [HumanMessage(content=state['messages'][-2].content)]
+        response = self.chat_model_with_output.invoke(
+            [HumanMessage(content=state['messages'][-1].content)]
         )
 
-        return {'final_response': [response,]}
+        return {'messages': [response,]}
 
     @override
     def _set_system_behavior(
