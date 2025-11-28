@@ -3,11 +3,17 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import httpx
+import logging
 
 from typing import Any
 from mcp.server import FastMCP
 
-mcp_server = FastMCP("Weather")
+logger = logging.getLogger(__name__)
+
+mcp_server = FastMCP(
+    name="Weather",
+    instructions="The MCP server define tools get weather information"
+)
 
 # Constants
 NWS_API_BASE = "https://api.weather.gov"
@@ -105,6 +111,7 @@ Forecast: {period['detailedForecast']}
 
 
 def main():
+    logger.info('MCP Server is running with transport \'stdio\'')
     mcp_server.run(transport='stdio')
 
 

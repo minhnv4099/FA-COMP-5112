@@ -2,13 +2,19 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+import os
+import sys
+sys.path.append(os.getcwd())
 import logging
 
 from pathlib import Path
 from typing import Any, Union
 from mcp.server import FastMCP
+from mcp.server.fastmcp.server import Context
 from mcp.types import Icon
 from src.utils.file import execute_file, write_script
+
+logger = logging.getLogger(__name__)
 
 mcp_server = FastMCP(
     name="Filesystem",
@@ -30,7 +36,7 @@ ICONS = [
     icons=ICONS,
     annotations=None
 )
-def execute_python_file(file_path: Union[str, Path] = None) -> Any:
+def execute_python_file(context: Context, file_path: Union[str, Path]) -> Any:
     """Execute a Python file
 
     Args:
@@ -39,10 +45,11 @@ def execute_python_file(file_path: Union[str, Path] = None) -> Any:
     Returns:
         Dictionary of stdout, stderr, code
     """
-    if not file_path:
-        raise ValueError(f"Invalid file path '{file_path}'")
+    if not os.path.isfile(file_path):
+        raise ValueError(f"Non-exist file path '{file_path}'")
 
     result = execute_file(file_path)
+
     return result
 
 
@@ -77,7 +84,7 @@ def write_file(content: str, file_path: Union[str, Path]) -> str:
     icons=ICONS,
     annotations=None
 )
-def read_file(file_path: Union[str, Path]) -> str | bytes:
+async def read_file(context: Context, file_path: Union[str, Path]) -> str | bytes:
     """Read content in a file
 
     Args:
@@ -161,11 +168,9 @@ def list_dir(dir: Union[str, Path]) -> list[str]:
     description='Use to read requirements file',
     icons=ICONS,
 )
-def get_content(file: Union[str, Path]):
+def get_content(file: Union[str, Path]) -> Union[str, bytes]:
     with open(file, 'r') as f:
-        content = f.read()
-
-    return f'Content of {file}: \n {content}'
+        return f.read()
 
 
 # Prompts
@@ -185,6 +190,7 @@ def read_file(file: Union[str, Path]):
 
 
 def main():
+    logger.info('MCP Server is running with transport \'stdio\'')
     mcp_server.run(transport='stdio')
 
 

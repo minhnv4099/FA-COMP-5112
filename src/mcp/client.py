@@ -4,6 +4,7 @@
 #
 import logging
 import functools
+import os.path
 
 from typing import Optional, Any, Union
 from mcp.client.session import ClientSession
@@ -12,28 +13,34 @@ from mcp.types import AnyUrl
 from mcp.types import CallToolResult, ReadResourceResult, GetPromptResult
 from contextlib import AsyncExitStack
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("MCPClient")
 
 
 class MCPClient:
+
+    session: Optional[ClientSession]
+    exit_stack: Optional[AsyncExitStack]
+    server_script_path: str
+
     def __init__(
         self,
         session: Optional[ClientSession] = None,
-        exit_stack: Optional[AsyncExitStack] = None
+        exit_stack: Optional[AsyncExitStack] = None,
+        server_script_path: Optional[str] = None,
+        **kwargs,
     ):
         # Initialize session and client objects
-        self.session: Optional[ClientSession] = session
+        self.session = session
         self.exit_stack = exit_stack or AsyncExitStack()
+        self.server_script_path = server_script_path
+        self.connect_to_server(server_script_path)
 
     @staticmethod
     def check_session(func: callable):
         @functools.wraps(func)
-        def wrapped_func(self, *args, **kwargs):
+        def wrapped_func(self: MCPClient, *args, **kwargs):
             if self.session is None:
-                raise ValueError(f"The session is now None, call 'connect_to_server' connect it to server first before calling '{func.__name__}'")
+                raise ValueError(f"The session is now None, call 'connect_to_server' to connect to server before calling '{func.__name__}'")
             return func(self, *args, **kwargs)
 
         return wrapped_func
@@ -132,6 +139,8 @@ class MCPClient:
         Args:
             server_script_path: Path to the server script (.py or .js)
         """
+        assert os.path.isfile(server_script_path)
+
         is_python = server_script_path.endswith('.py')
         is_js = server_script_path.endswith('.js')
         if not (is_python or is_js):
@@ -144,11 +153,9 @@ class MCPClient:
             env=None
         )
 
-        self.exit_stack = AsyncExitStack()
-
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
         stdio, write = stdio_transport
-        self.session: ClientSession = await self.exit_stack.enter_async_context(ClientSession(stdio, write))
+        self.session = await self.exit_stack.enter_async_context(ClientSession(stdio, write))
 
         await self.session.initialize()
 
