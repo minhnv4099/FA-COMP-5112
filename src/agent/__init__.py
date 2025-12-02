@@ -2,33 +2,55 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from src.utils import scan_module
+from __future__ import annotations
 
-from src.agent.base import BaseAgent
-from src.agent.react_loop import LoopReactAgent, ReactStatefulAgent
+from typing import TYPE_CHECKING
 
-from src.agent.planner import PlannerAgent
-from src.agent.retriever import RetrieverAgent
-from src.agent.coding import CodingAgent
-from src.agent.critic import CriticAgent
-from src.agent.verification import VerificationAgent
-from src.agent.user import UserAgent
+from src._import_utils import import_attr
 
-__module_lookup = {
-    "base": "BaseAgent",
-    "react": "LoopReactAgent",
-    "stateful_react": "ReactStatefulAgent",
-    "planner": "PlannerAgent",
-    "retriever": "RetrieverAgent",
-    "coding": "CodingAgent",
-    "critic": "CriticAgent",
-    "verification": "VerificationAgent",
-    "user": "UserAgent"
+if TYPE_CHECKING:
+    from src.agent.base import BaseAgent
+    from src.agent.react_loop import LoopReactAgent, ReactStatefulAgent
+
+    from src.agent.planner import PlannerAgent
+    from src.agent.retriever import RetrieverAgent
+    from src.agent.coding import CodingAgent
+    from src.agent.critic import CriticAgent
+    from src.agent.verification import VerificationAgent
+    from src.agent.user import UserAgent
+
+__all__ = (
+    "BaseAgent",
+    "LoopReactAgent",
+    "ReactStatefulAgent",
+    # COMP 5112 agents
+    "PlannerAgent",
+    "RetrieverAgent",
+    "CodingAgent",
+    "CriticAgent",
+    "VerificationAgent",
+    "UserAgent"
+)
+
+__dynamic_imports = {
+    "BaseAgent": "base",
+    "LoopReactAgent": "react_loop",
+    "ReactStatefulAgent": "react_loop",
+    "PlannerAgent": "planner",
+    "RetrieverAgent": "retriever",
+    "CodingAgent": "coding",
+    "CriticAgent": "critic",
+    "VerificationAgent": "verification",
+    "UserAgent": "user"
 }
 
 
-def __getattr__(name):
-    return __module_lookup[name]
+def __getattr__(attr_name: str) -> object:
+    module_name = __dynamic_imports.get(attr_name)
+    result = import_attr(attr_name, module_name, package=__spec__.parent)
+    globals()[attr_name] = result
+    return result
 
 
-__all__ = scan_module(globals())
+def __dir__() -> list[str]:
+    return list(__all__)
