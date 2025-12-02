@@ -13,7 +13,8 @@ from typing import (
     Union,
     Optional,
     Sequence,
-    TYPE_CHECKING
+    TYPE_CHECKING,
+    final,
 )
 from typing_extensions import deprecated
 
@@ -37,8 +38,8 @@ from src.registry import RegisterChat
 from src.supplier import PROVIDER_TO_ENV, PROVIDER_TO_BASE_URL
 from src.chat.mixin import ChatMixin
 from src.utils.decorator import add_note_docstring, must_override
-from src.utils.exception import NotOverrideError
 from src.utils.file import load_prompt_template_file
+from src.utils.exception import EmptyMessage
 
 if TYPE_CHECKING:
     from langchain.chat_models.base import BaseChatModel
@@ -46,6 +47,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 LanguageModelInput = Union[str, dict[str, Any], PromptValue, BaseMessage, Sequence[BaseMessage], list[BaseMessage]]
+_DEFAULT_MODEL_NAME = "meta-llama/llama-3.3-70b-instruct:free"
+_DEFAULT_MODEL_PROVIDER = "openrouter"
 
 
 @RegisterChat(module_path=__name__, name='base_chat')
@@ -64,9 +67,6 @@ class BaseChat(ChatMixin):
     model_provider: str
     """Provide of used model (e.g. ``openai``, ``google``, ``openrouter``)"""
 
-    chat_model: BaseChatModel
-    """"""
-
     endpoint_url: str
     """The endpoint url. Can be used to initialize chat model outside"""
 
@@ -74,6 +74,9 @@ class BaseChat(ChatMixin):
     """API key. It can be load from environment variables based on provider.
     Can be used to initialize chat model outside
     """
+
+    chat_model: Union[BaseChat, BaseChatModel, None]
+    """Accept chat model instance of ``BaseChat`` (itself) or ``BaseChatModel``"""
 
     template_file: str
     """File containing message templates, from system to human templates. 
@@ -103,27 +106,6 @@ class BaseChat(ChatMixin):
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__()
 
-        missing_func = []
-        comp_5112_func = []
-
-        for name, attr in BaseChat.__dict__.items():
-            if getattr(attr, "__must_override__", False):
-                if name not in cls.__dict__:
-                    missing_func.append(name)
-
-            if getattr(attr, "__note_docstring__", False):
-                if "5112" in attr.__note_docstring__:
-                    comp_5112_func.append(name)
-
-        if kwargs.get('show_5112', False):
-            if comp_5112_func:
-                logger.warning(f'{comp_5112_func} are used only for "COMP-5112" project. '
-                               f'Only use them in the project scope.')
-
-        if not kwargs.get('bypass_override', True):
-            if missing_func:
-                raise NotOverrideError(f"[Warning] Class '{cls.__name__}' didn't override: {missing_func}")
-
     def __init__(
         self,
         name: str = None,
@@ -132,13 +114,14 @@ class BaseChat(ChatMixin):
         model_name: str = None,
         model_provider: str = None,
         model_api_key: str = None,
-        chat_model: BaseChatModel = None,
+        chat_model:  Union[BaseChat, BaseChatModel, None] = None,
+        llm_engine: Union[BaseChat, BaseChatModel, None] = None,
         template_file: str = None,
         **kwargs,
     ):
         """"""
         # metadata
-        self.name = name if name else self.__class__
+        self.name = name if name else repr(self.__class__)
         self.metadata = metadata
 
         # chat model
@@ -146,21 +129,20 @@ class BaseChat(ChatMixin):
         self.model_name = model_name
         self.model_provider = model_provider
         self.model_api_key = model_api_key
-        self.chat_model = chat_model
+        self.chat_model = llm_engine or chat_model
 
         # check model
-        self._check_model_provider()
-        self._check_model_name()
-        self._check_chat_model()
-
-        # initialize model
-        if self.use_model and not self.chat_model:
-            self._initialize_model()
+        if self.use_model:
+            self._check_chat_model()
+            if not self.chat_model:
+                # initialize model
+                self._check_model_provider()
+                self._check_model_name()
+                self._initialize_model()
 
         # prompt templates
         self.template_file = template_file
-        # logger.info(f"{self.name} loads templates from: '{self.template_file}'")
-        self._prepare_message_templates(template_file=template_file)
+        self._prepare_message_templates()
         self.chat_template = self._prepare_chat_template()
 
         # usage metadata
@@ -171,27 +153,46 @@ class BaseChat(ChatMixin):
         self.opening_symbols = "-" * 60 + ' ' + self.name.title() + ' ' + "-" * 60
         self.closing_symbols = "*" * (122 + len(self.name))
 
-    @deprecated("No needed because can use cheap or free models.")
+    # TODO: move to llm engine
     def _check_model_name(self):
-        ...
+        if self.model_name is None:
+            logger.critical(f"Invalid model name: {self.model_name!r}. Use {_DEFAULT_MODEL_NAME!r} by default.")
+            self.model_name = _DEFAULT_MODEL_NAME
 
+    # TODO: move to llm engine
     def _check_model_provider(self):
         if self.model_provider not in PROVIDER_TO_ENV:
             supported_provider = ', '.join(filter(lambda x: x, PROVIDER_TO_ENV.keys()))
             logger.warning(
-                f"Now we only use models from provider: {supported_provider}, but got '{self.model_provider}'"
-                f"Use 'openrouter', default")
-            self.model_provider = 'openrouter'
+                f"Now we only use models from provider: {supported_provider!r}, but got {self.model_provider!r}"
+                f"Use {_DEFAULT_MODEL_PROVIDER!r} by default")
+            self.model_provider = _DEFAULT_MODEL_PROVIDER
 
-    # TODO: accept pre-defined chat model
+    # TODO: move to llm engine
     def _check_chat_model(self):
         if self.chat_model is not None:
-            logger.critical(f"Now we only accept instantiating `chat_model` from 'model_name'. Pass this value")
+            msg = f"Use pre-defined chat model {repr(self.chat_model.__class__)!r}"
+            if isinstance(self.chat_model, BaseChat):
+                if self.chat_model.__class__ is not BaseChat:
+                    msg = (f"[CRITICAL]-Now we only accept chat_model of BaseChat class, not subclasses, but got {self.chat_model.__class__!r}. "
+                           f"Chat model (BaseChat) acts as an LLM engine, {self.chat_model.__class__!r} may have some capabilities"
+                           f", using that object can go beyond the ability of BaseChat. So, instantiate from ``model_name`` instead")
+                    self.chat_model = None
+                else:
+                    self.chat_model = self.chat_model.llm_engine
+            else:
+                self.chat_model = self.chat_model
+            logger.info(msg)
+        else:
+            ...
 
+    # TODO: move to llm engine
     def _initialize_model(self):
-        """Initialize model based on ``model_name``, ``model_provider``"""
-
+        """Initialize model based on ``model_name``, ``model_provider``.
+        Check ``chat_model``, ``model_provider`` and ``model_name`` before initializing.
+        """
         self.endpoint_url = PROVIDER_TO_BASE_URL[self.model_provider]
+
         if self.model_api_key is None:
             self.model_api_key = os.getenv(PROVIDER_TO_ENV[self.model_provider])
 
@@ -199,7 +200,7 @@ class BaseChat(ChatMixin):
             model=self.model_name,
             openai_api_base=self.endpoint_url,  # type: ignore
             openai_api_key=self.model_api_key,  # type: ignore
-            temperature=0.5,
+            temperature=0.7,
             rate_limiter=InMemoryRateLimiter(
                 requests_per_second=0.1,
                 check_every_n_seconds=0.1,
@@ -207,38 +208,41 @@ class BaseChat(ChatMixin):
             ),
         )
 
+    # TODO: move to llm engine
     @property
     def api_key(self):
-        return self.model_api_key
+        return self.model_api_key or os.getenv(PROVIDER_TO_ENV[self.model_provider])
 
+    # TODO: move to llm engine
     @property
     def base_url(self):
-        return self.endpoint_url
+        return self.endpoint_url or PROVIDER_TO_BASE_URL[self.model_provider]
 
+    @property
+    def llm_engine(self):
+        return self.chat_model
+
+    @must_override
     def __call__(
         self,
         *args,
         **kwargs
     ):
         """"""
-        raise NotImplementedError("Use 'invoke()' to interact with chat model.")
+        raise NotImplementedError("Use 'invoke()' to interact with chat.")
 
-    def validate_input(self, input: LanguageModelInput, config: Optional[Union[RunnableConfig, dict]] = None):
+    def validate_input(self, input: LanguageModelInput) -> LanguageModelInput:
         if isinstance(input, dict):
-            input = self.chat_template.invoke(
-                input=input,
-                config=config
-            )
+            input = self.chat_template.invoke(input=input)
         elif isinstance(input, str):
             if len(input) == 0:
-                return AIMessage(content='Error: Input must have at least 1 token')
-            input = self.chat_template.invoke(
-                input={'message': input},
-                config=config
-            )
-        elif (isinstance(input, (PromptValue, BaseMessage)) or
-              (isinstance(input, list) and all(isinstance(m, BaseMessage) for m in input))):
+                raise EmptyMessage('Error: Input must have at least 1 token')
+            input = self.chat_template.invoke(input={'message': input})
+        elif isinstance(input, (PromptValue, BaseMessage, Sequence, list)):
             input = input
+        else:
+            msg = f"Expect type {repr(LanguageModelInput)!r}, but got {type(input)!r}"
+            raise ValueError(msg) from None
 
         return input
 
@@ -264,10 +268,10 @@ class BaseChat(ChatMixin):
         Returns:
             The generated response.
         """
-        input = self.validate_input(input, config)
-        # AI message with error content
-        if isinstance(input, AIMessage):
-            return input
+        try:
+            input = self.validate_input(input)
+        except EmptyMessage as e:
+            return AIMessage(content=str(e))
 
         return self.internal_invoke(
             input=input,
@@ -275,6 +279,7 @@ class BaseChat(ChatMixin):
             stop=stop
         )
 
+    @final
     def internal_invoke(
         self,
         input: LanguageModelInput,
@@ -293,7 +298,7 @@ class BaseChat(ChatMixin):
         Returns:
             The generated response.
         """
-        ai_message = self.chat_model.invoke(
+        ai_message = self.llm_engine.invoke(
             input=input,
             config=config,
             stop=stop
@@ -302,18 +307,25 @@ class BaseChat(ChatMixin):
 
         return ai_message
 
-    @must_override
-    def _prepare_message_templates(self, template_file: str, *args, **kwargs):
+    def _prepare_message_templates(self, *args, **kwargs):
         """Prepare message templates for system and human roles.
 
         This method only works for Chat Assistance with **ONE** system prompt and **ONE** human prompt. \n
         Override it by doing nothing if the chat has other message templates.
         """
-        templates_dict = load_prompt_template_file(template_file)
+        templates = load_prompt_template_file(self.template_file)
+
+        if isinstance(templates, str):
+            templates_dict = {
+                "system_template": templates,
+                "human_template": """{message}"""
+            }
+        else:
+            templates_dict = templates
 
         self.system_template = SystemMessagePromptTemplate.from_template(
             template=templates_dict.get(
-                "system_template",
+                'system_template',
                 "You are a very helpful assistance."
             ),
             template_format='f-string'
@@ -325,7 +337,6 @@ class BaseChat(ChatMixin):
         )
 
     @add_note_docstring('Prepare dynamic prompt')
-    @must_override
     def _prepare_chat_template(
         self,
         system_template: Optional[SystemMessagePromptTemplate, SystemMessage] = None,
