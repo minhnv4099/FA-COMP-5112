@@ -7,9 +7,9 @@ from __future__ import annotations
 import logging
 import importlib
 from collections import defaultdict
-from typing import Union, TYPE_CHECKING
+from typing import Union, TYPE_CHECKING, Optional
 
-from src.types import ClassLike, SchemaLike, OmegaDict
+from src.types import ClassLike, SchemaLike, MappingLike
 from src.utils.exception import NotFoundSchema, NotFoundTool
 
 if TYPE_CHECKING:
@@ -52,12 +52,12 @@ def load_tool(name: str, **kwargs) -> BaseDefinedTool:
         raise NotFoundTool
 
 
-def fetch_registered(metadata: Union[OmegaDict]) -> Union[None, SchemaLike]:
+def fetch_registered(metadata: Optional[MappingLike]) -> Union[None, SchemaLike]:
     if metadata is None:
         return None
 
-    if not isinstance(metadata, OmegaDict):
-        raise ValueError(f"metadata must be like-dict, but got '{type(metadata)}'")
+    if not isinstance(metadata, MappingLike):
+        raise ValueError(f"metadata must be like-dict, but got {type(metadata)!r}")
 
     try:
         if metadata['type'] == 'tool':
@@ -66,7 +66,6 @@ def fetch_registered(metadata: Union[OmegaDict]) -> Union[None, SchemaLike]:
         return load_class(type=metadata['type'], name=metadata['name'])
 
     except KeyError as e:
-        # TODO: can change exception
         raise NotFoundSchema(e.args)
 
 

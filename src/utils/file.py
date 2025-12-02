@@ -5,6 +5,8 @@
 import os
 import subprocess
 import base64
+from typing import Union
+
 import yaml
 import html
 import ast
@@ -63,17 +65,28 @@ def write_script(script: str, file_path: str = None) -> None | str:
     return file_path
 
 
-def load_prompt_template_file(prompt: str | Path):
-    if prompt is None:
+def load_prompt_template_file(prompt_file: Union[Path, str]) -> dict | str:
+    """Load message templates from a file
+
+    Args:
+        prompt_file:
+
+            * `.yaml`: Return a ``dictionary`` with all keys.
+            * `other`: Return a ``string`` as system prompt.
+
+    Returns:
+         A string or a dictionary.
+    """
+    if prompt_file is None:
         return dict()
 
-    if os.path.isfile(prompt):
-        if prompt.endswith('.yaml'):
-            with open(prompt, 'r') as f:
+    if os.path.isfile(prompt_file):
+        if prompt_file.endswith('.yaml'):
+            with open(prompt_file, 'r') as f:
                 prompt_dict = yaml.safe_load(f)
             return prompt_dict
         else:
-            prompt_content = Path(prompt).read_text()
+            prompt_content = Path(prompt_file).read_text()
             return prompt_content
 
     return dict()

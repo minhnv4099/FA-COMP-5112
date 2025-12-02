@@ -6,6 +6,7 @@ import logging
 
 from src.builder import Builder
 from src.utils import find_load_env
+from src.chat import BaseChat, StatefulChat, ToolCallGenerateChat
 
 find_load_env()
 
@@ -14,38 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    chat = Builder.build(
-        type='agent',
-        config={
-            'name': 'retriever',
-            'model_name': 'openai/gpt-4o-mini',  # TODO: can change
-            'template_file': 'templates/prompt/general/retriever.yaml',   # TODO: finetune system prompt
-            'tool_schemas': [
-                {
-                    'type': 'tool',
-                    'name': 'retrieve_query',
-                    'tool_kwargs': {
-                        "db_path": "vectorstores/lakehead/faiss_v.1",  # NOTE: keep it for testing
-                        "embedding_name": "all-MiniLM-L6-v2.gguf2.f16.gguf",  # NOTE: keep it for testing
-                        "n_docs": 4  # TODO: can change
-                    }
-                },
-            ]
-        }
-    )
+    llm = Builder.build(type='llm')
+    chat = StatefulChat(llm_engine=llm)
 
-    # config = {'configurable': {'thread_id': 'single_user'}}
-    while True:
-        question = input('Enter your question (q to quit): ')
-        if question == 'q':
-            print('Goodbye. Have a nice day.')
-            break
+    response = chat.invoke(input="hello my name is Minh. Who are you?")
+    response = chat.invoke(input='What my name?')
 
-        response = chat.invoke(question)
-
-        print(response.content or response.tool_calls)
-
-    # to see full conversation to inspect insights
     chat.print_conversation()
 
 

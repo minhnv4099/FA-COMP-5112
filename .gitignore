@@ -39,15 +39,13 @@ chatbot_tmp/
 hydra_main.py
 app_local.py
 app.py
-
+vectorstores/
 !.gitkeep
 assets/blender_script/**/*.py
 assets/rendered_images/**/*.png
 assets/**/*.py
 test_*.py
 tmp*.py
-#app.py
-#app_local.py
 
 notes.log
 # Self-created files

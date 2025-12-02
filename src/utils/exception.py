@@ -69,3 +69,7 @@ class NoNodeError(ValueError):
 
 class NotFoundTool(Exception):
     ...
+
+
+class EmptyMessage(ValueError):
+    ...
