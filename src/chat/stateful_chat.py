@@ -38,6 +38,7 @@ from src.chat.tool_call_chat import ToolCallGenerateChat, ToolCallExecuteChat
 from src.state.base import BaseState
 from src.context.base import BaseContext
 from src.utils.decorator import add_note_docstring
+from src.utils.exception import EmptyMessage
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
@@ -165,22 +166,21 @@ class StatefulChat(
         return {'messages': [response,]}
 
     @override
-    def validate_input(
-        self,
-        input: LanguageModelInput,
-        config: Optional[Union[RunnableConfig, dict]] = None
-    ) -> Union[dict, AIMessage]:
+    def validate_input(self, input: LanguageModelInput) -> dict:
         if isinstance(input, dict):
             input = input
         elif isinstance(input, str):
             if len(input) == 0:
-                return AIMessage(content='Error: Input must have at least 1 token')
+                raise EmptyMessage('Error: Input must have at least 1 token')
             input = {'messages': input}
         elif isinstance(input, PromptValue):
             input = {'messages': input.to_messages()}
         elif (isinstance(input, BaseMessage) or
               (isinstance(input, list) and all(isinstance(m, BaseMessage) for m in input))):
             input = {'messages': input}
+        else:
+            msg = f"Expect type {repr(LanguageModelInput)!r}, but got {type(input)!r}"
+            raise ValueError(msg) from None
 
         return input
 
@@ -211,11 +211,10 @@ class StatefulChat(
             The generated response.
         """
         config = config if config else self.config
-        input = self.validate_input(input, config)
-
-        # AI message with error content
-        if isinstance(input, AIMessage):
-            return input
+        try:
+            input = self.validate_input(input)
+        except EmptyMessage as e:
+            return AIMessage(content=str(e))
 
         output = self.graph.invoke(
             input=input,  # type: ignore
@@ -239,7 +238,7 @@ class StatefulChat(
             system_prompt = SystemMessage(content=system_prompt)
         elif isinstance(system_prompt, SystemMessagePromptTemplate):
             system_prompt = system_prompt.format(
-                **sys_kwargs if sys_kwargs else ...
+                **sys_kwargs if sys_kwargs else dict()
             )
 
         self.put_state(
@@ -284,7 +283,7 @@ class ToolCallGenerateStatefulChat(
             action=self.model_call,
             retry_policy=RetryPolicy(),
             metadata={
-                'description': 'Actually call chat model'
+                'description': 'Model call node'
             },
         )
 
@@ -292,7 +291,7 @@ class ToolCallGenerateStatefulChat(
             node='tool_call',
             action=self.tool_call,
             metadata={
-                'description': ''
+                'description': 'Tool call node'
             },
         )
 
@@ -337,7 +336,7 @@ class ToolCallGenerateStatefulChat(
             context=context
         )
 
-    @add_note_docstring("A node of the internal graph")
+    @add_note_docstring("Tool call node of the internal graph")
     def tool_call(
         self,
         state: Union[StateT],

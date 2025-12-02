@@ -25,7 +25,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command
 
 from src.registry import RegisterAgent
-from src.types import StateT, ContextT, OutputT, ToolSchema, OmegaDict
+from src.types import StateT, ContextT, OutputT, ToolSchema, MappingLike
 from src.chat.stateful_chat import ToolCallExecuteStatefulChat, LanguageModelInput
 from src.utils.decorator import add_note_docstring
 
@@ -43,7 +43,7 @@ class LoopReactAgent(
 ):
     """The ReAct Agent can action and observe until meet conditions. It's non-stateful"""
 
-    persistent_on_invoke: bool
+    persistent_on_invoke: bool = True
     """If True, create a new thread each time invoking. Default to True (basic ReAct agent flow)"""
 
     max_attempts = 5
@@ -55,7 +55,7 @@ class LoopReactAgent(
     def __init__(
         self,
         *args,
-        persistent_on_invoke: Optional[bool] = True,
+        persistent_on_invoke: Optional[bool] = None,
         option: Literal['1llm', '2llm'] = '1llm',
         **kwargs
     ):
@@ -69,7 +69,7 @@ class LoopReactAgent(
             self._separate_models()
             self.chat_model = self.chat_model_with_tools  # type: ignore
 
-        self.persistent_on_invoke = persistent_on_invoke
+        self.persistent_on_invoke = persistent_on_invoke or self.persistent_on_invoke
 
     def _reset_thread(self):
         self.config['configurable']['thread_id'] = uuid.uuid1()
@@ -102,8 +102,6 @@ class LoopReactAgent(
 
         self.graph_builder.add_edge(START, 'model_call')
         self.graph_builder.add_edge('model_call', 'observe_and_decide')
-        # self.graph_builder.add_edge('model_call', '_response')
-        # self.graph_builder.add_edge('_response', END)
         self.graph_builder.add_edge('tool_call', 'model_call')
 
         self.graph = self.graph_builder.compile(
@@ -210,7 +208,7 @@ class LoopReactAgent(
         last_message = state['messages'][-1]
         if not isinstance(last_message, AIMessage):
             raise ValueError(
-                f"Expected AIMessage in output edges, but got {type(last_message).__name__}"
+                f"Expected AIMessage in output edges, but got {type(last_message).__name__!r}"
             )
 
         if len(last_message.tool_calls) == 1:
@@ -240,7 +238,7 @@ class LoopReactAgent(
             strict=False,
         )
 
-        if isinstance(structured_output_schema := self.chat_output, OmegaDict):
+        if isinstance(structured_output_schema := self.chat_output, MappingLike):
             structured_output = self.fetch_schema(structured_output_schema)
         else:
             structured_output = self.chat_output

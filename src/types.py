@@ -4,15 +4,14 @@
 #
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TypeVar, Union, TYPE_CHECKING, TypeAlias
-
 from omegaconf import ListConfig, DictConfig
+from dataclasses import dataclass
 from pydantic import BaseModel
+from typing import TypeVar, Union, TYPE_CHECKING, TypeAlias
 from typing_extensions import TypedDict
 
 if TYPE_CHECKING:
-    pass
+    ...
 
 StateLike = Union[TypedDict, BaseModel, dataclass, dict]
 """The generic type for like-state type"""
@@ -47,10 +46,10 @@ ClassLike = TypeVar('ClassLike', bound=object)
 NodeT = TypeVar('NodeT', bound="BaseNode")
 """"""
 
-OmegaList: TypeAlias = Union[list, ListConfig]
+ListLike: TypeAlias = Union[list, ListConfig]
 """"""
 
-OmegaDict: TypeAlias = Union[dict, DictConfig]
+MappingLike: TypeAlias = Union[dict, DictConfig]
 """"""
 
 __all__ = [
@@ -65,11 +64,7 @@ __all__ = [
     'OutputSchema',
     'ClassLike',
     'NodeT',
-    'OmegaDict',
-    'OmegaList'
+    'ListLike',
+    'MappingLike'
 ]
 
-
-def __getattr__(name):
-    if name not in __all__:
-        raise AttributeError(f"Module {__name__} has no name '{name}'. All available names: {__all__}")

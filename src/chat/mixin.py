@@ -23,7 +23,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.utils.interactive_env import is_interactive_env
 from langgraph.checkpoint.memory import InMemorySaver
 
-from src.types import OmegaList
+from src.types import MappingLike
 from src.utils.decorator import add_note_docstring
 
 if TYPE_CHECKING:
@@ -93,7 +93,7 @@ class ToolCallChatMixin(ABC, metaclass=ABCMeta):
     @classmethod
     def _parse_json_content(cls, text: str):
         """Parse the structured output from text content"""
-        import json, re
+        import re
 
         text = text.strip()
         if text.startswith("```"):
@@ -101,7 +101,7 @@ class ToolCallChatMixin(ABC, metaclass=ABCMeta):
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group())
+                return loads(match.group())
             except ValueError:
                 pass
 
@@ -135,7 +135,7 @@ class ToolCallChatMixin(ABC, metaclass=ABCMeta):
 
     @classmethod
     def _convert_to_list(cls, seq: Union[Any, Iterable[Any]]) -> list[Any]:
-        if seq and not isinstance(seq, OmegaList):
+        if seq and not isinstance(seq, MappingLike):
             seq = [seq, ]
 
         return seq or []

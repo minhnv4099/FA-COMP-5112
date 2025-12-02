@@ -30,7 +30,7 @@ from src.types import (
     OutputT,
     ContextT,
     ToolSchema,
-    OmegaDict
+    MappingLike
 )
 from src.chat.base import BaseChat, LanguageModelInput
 from src.chat.mixin import ToolCallChatMixin
@@ -81,8 +81,8 @@ class ToolCallGenerateChat(
 
         self.tool_schemas = tool_schemas
         self.chat_output = chat_output
-        # bind schemas to the chat model
-        if self.chat_model:
+        # bind schemas to the llm engine
+        if self.llm_engine:
             schemas = self._validate_schemas()
             self.bind_schemas(schemas)
 
@@ -147,8 +147,8 @@ class ToolCallGenerateChat(
         schemas = self.fetch_schemas(self.tool_schemas + self.chat_output)
         schemas = list(filter(lambda x: x, schemas))
         if schemas:
-            logger.info(f"The '{self.name}' has access to {len(schemas)} schemas"
-                        f" ({len(self.tool_schemas)} tools + {len(self.chat_output)} outputs).")
+            logger.info(f"The {self.name!r} has access to {len(schemas)} schemas"
+                        f" ({len(self.tool_schemas)} tool(s) + {len(self.chat_output)} outputs).")
 
         return schemas
 
@@ -157,7 +157,7 @@ class ToolCallGenerateChat(
         if len(schemas) == 1 and issubclass(schemas[0], BaseOutput):
             tool_choice = True
 
-        self.chat_model = self.chat_model.bind_tools(   # type: ignore
+        self.chat_model = self.llm_engine.bind_tools(   # type: ignore
             tools=schemas,
             strict=True,
             tool_choice=tool_choice,
@@ -170,7 +170,7 @@ class ToolCallGenerateChat(
         ]
 
     def fetch_schema(self, schema: Union[dict, ToolSchema]) -> Union[None, SchemaLike]:
-        if not isinstance(schema, OmegaDict):
+        if not isinstance(schema, MappingLike):
             return schema
 
         schema_obj = fetch_registered(metadata=schema)
@@ -195,7 +195,7 @@ class ToolCallExecuteChat(
 
         self.tools = get_tools_from_schemas(self.tool_schemas)
         if self.tools:
-            logger.info(f"The '{self.name}' can execute {len(self.tools)} tools.")
+            logger.info(f"The {self.name!r} can execute {len(self.tools)} tools.")
 
     @add_note_docstring('Execute tool call')
     @override
@@ -208,8 +208,8 @@ class ToolCallExecuteChat(
         If no tool (function) is found, treat it as tool schema -> parse output.
         """
         if tool_call['name'] in self.tools:
-            # ToolMessage
             tool = self.tools[tool_call['name']]
+            # ToolMessage
             return tool.invoke(input=tool_call)
         else:
             # ParsedTollCallMessage
