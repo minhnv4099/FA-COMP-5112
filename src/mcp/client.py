@@ -33,7 +33,6 @@ class MCPClient:
         self.session = session
         self.exit_stack = exit_stack or AsyncExitStack()
         self.server_script_path = server_script_path
-        self.connect_to_server(server_script_path)
 
     @staticmethod
     def check_session(func: callable):
