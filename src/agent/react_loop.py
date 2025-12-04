@@ -25,7 +25,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command
 
 from src.registry import RegisterAgent
-from src.types import StateT, ContextT, OutputT, ToolSchema, MappingLike
+from src.typing import StateT, ContextT, OutputT, ToolSchema, MappingLike
 from src.chat.stateful_chat import ToolCallExecuteStatefulChat, LanguageModelInput
 from src.utils.decorator import add_note_docstring
 
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@RegisterAgent(module_path=__name__, name='react_agent')
+@RegisterAgent(module=__name__, name='react_agent')
 class LoopReactAgent(
     # ReactAgentMixin,
     ToolCallExecuteStatefulChat,
@@ -213,11 +213,11 @@ class LoopReactAgent(
 
         if len(last_message.tool_calls) == 1:
             tool_call = last_message.tool_calls[0]
-            if tool_call['name'] not in self.tools:
+            if not (self._is_langchain_tool(tool_call) or self._is_mcp_tool(tool_call)):
                 self.num_tries = 0
                 return Command(
                     update={
-                        "messages": [self._internal_tool_call(tool_call), ],
+                        "messages": [self._internal_call_tool(tool_call), ],
                     },
                     goto=END,
                 )
@@ -274,7 +274,7 @@ class LoopReactAgent(
         ...
 
 
-@RegisterAgent(module_path=__name__, name='react_stateful_agent')
+@RegisterAgent(module=__name__, name='react_stateful_agent')
 class ReactStatefulAgent(
     LoopReactAgent,
     Generic[StateT, ContextT, OutputT, ToolSchema]
