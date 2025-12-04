@@ -14,7 +14,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import interrupt, Command
 
 from src.registry import RegisterNode, RegisterAgent
-from src.types import StateT, ContextT, InputT, OutputT
+from src.typing import StateT, ContextT, InputT, OutputT
 from src.utils import DirectionRouter
 from src.node.base import BaseNode
 from src.utils.decorator import add_note_docstring
@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterAgent(module_path=__name__, name='user')
-@RegisterNode(module_path=__name__, name='user')
+@RegisterAgent(module=__name__, name='user')
+@RegisterNode(module=__name__, name='user')
 class UserAgent(
     BaseNode,
     Generic[StateT, ContextT, InputT, OutputT],

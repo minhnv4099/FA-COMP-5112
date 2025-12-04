@@ -4,67 +4,40 @@
 #
 from __future__ import annotations
 
-from omegaconf import ListConfig, DictConfig
-from dataclasses import dataclass
-from pydantic import BaseModel
-from typing import TypeVar, Union, TYPE_CHECKING, TypeAlias
-from typing_extensions import TypedDict
+from typing import Any, Optional, Union
+from typing_extensions import Annotated, TypedDict, deprecated, NotRequired, Required
+from dataclasses import dataclass, field
 
-if TYPE_CHECKING:
-    ...
+from src.registry import RegisterState
 
-StateLike = Union[TypedDict, BaseModel, dataclass, dict]
-"""The generic type for like-state type"""
 
-StateT = TypeVar('StateT', bound=StateLike)
-"""The generic type for state (graph state)"""
+@deprecated('No need')
+class RegisterMetadata(TypedDict):
+    """Schema used to register any class"""
 
-InputT = TypeVar('InputT', bound=StateLike)
-"""The generic type for input state of a graph"""
+    type: str
+    """Type of the class such as ``chat``, ``agent``, ...."""
+    module: str
+    """Module (`.py` file) containing the class"""
+    name: str
+    """The unique name used to register"""
 
-OutputT = TypeVar('OutputT', bound=StateLike)
-"""The generic type for output state of a graph"""
 
-ContextT = TypeVar('ContextT', bound=StateLike)
-"""The generic tye of context (runtime) of a graph"""
+class RegisterFetchMetadata(TypedDict, total=False):
+    """Schema used to fetch a class"""
 
-SchemaLike = Union[BaseModel, StateLike]
-"""The generic type for schema"""
+    type: str
+    """Type of the class such as ``chat``, ``agent``, ...."""
+    name: str
+    """The unique name of registered class"""
+    kwargs: NotRequired[dict[str, Any]]
+    """Additional keywork arguments"""
 
-SchemaT = TypeVar('SchemaT', bound=SchemaLike)
-"""The generic type for schema"""
 
-ToolSchema = TypeVar('ToolSchema', bound=SchemaLike)
-"""The argument schema for tool call"""
+@RegisterState(module=__name__, name='base_context')
+@dataclass(kw_only=True)
+class BaseContext:
 
-OutputSchema = TypeVar('OutputSchema', bound=SchemaLike)
-"""The schema for structure output"""
-
-ClassLike = TypeVar('ClassLike', bound=object)
-""""""
-
-NodeT = TypeVar('NodeT', bound="BaseNode")
-""""""
-
-ListLike: TypeAlias = Union[list, ListConfig]
-""""""
-
-MappingLike: TypeAlias = Union[dict, DictConfig]
-""""""
-
-__all__ = [
-    'StateLike',
-    'StateT',
-    'InputT',
-    'OutputT',
-    'ContextT',
-    'SchemaLike',
-    'SchemaT',
-    'ToolSchema',
-    'OutputSchema',
-    'ClassLike',
-    'NodeT',
-    'ListLike',
-    'MappingLike'
-]
-
+    user_id: str = field(
+        default='1304391',
+    )

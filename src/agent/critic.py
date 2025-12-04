@@ -21,7 +21,7 @@ from src.utils.constants import (
 )
 from src.node.base import BaseNode
 from src.utils.decorator import add_note_docstring
-from src.types import StateT, ContextT, InputT, OutputT
+from src.typing import StateT, ContextT, InputT, OutputT
 from src.utils.exception import NoRenderImages
 from src.utils.file import load_image_content
 from src.utils.file import write_script, execute_file
@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterAgent(module_path=__name__, name='critic')
-@RegisterNode(module_path=__name__, name='critic')
+@RegisterAgent(module=__name__, name='critic')
+@RegisterNode(module=__name__, name='critic')
 class CriticAgent(
     BaseNode,
     Generic[StateT, ContextT, InputT, OutputT],

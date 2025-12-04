@@ -25,7 +25,7 @@ from langgraph.types import Command
 
 from src.registry import RegisterNode, RegisterAgent
 from src.utils import DirectionRouter
-from src.types import StateT, ContextT, InputT, OutputT
+from src.typing import StateT, ContextT, InputT, OutputT
 from src.node.base import BaseNode
 from src.utils.decorator import add_note_docstring
 
@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 
 @add_note_docstring(docs="'COMP-5112' project")
-@RegisterAgent(module_path=__name__, name='retriever')
-@RegisterNode(module_path=__name__, name='retriever')
+@RegisterAgent(module=__name__, name='retriever')
+@RegisterNode(module=__name__, name='retriever')
 class RetrieverAgent(
     BaseNode,
     Generic[StateT, ContextT, InputT, OutputT],

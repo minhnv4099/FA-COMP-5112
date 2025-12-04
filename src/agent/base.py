@@ -18,13 +18,13 @@ import logging
 from typing import Generic
 
 from src.registry import RegisterAgent
-from src.types import StateT, OutputT, ToolSchema, ContextT
+from src.typing import StateT, OutputT, ToolSchema, ContextT
 from src.chat.tool_call_chat import ToolCallExecuteChat
 
 logger = logging.getLogger(__name__)
 
 
-@RegisterAgent(module_path=__name__, name='base_agent')
+@RegisterAgent(module=__name__, name='base_agent')
 class BaseAgent(
     ToolCallExecuteChat,
     Generic[StateT, ContextT, OutputT, ToolSchema],

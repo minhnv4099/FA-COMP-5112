@@ -21,7 +21,7 @@ from langgraph.types import Command
 
 from src.node import BaseNode
 from src.registry import RegisterAgent, RegisterNode
-from src.types import StateT, ContextT, InputT, OutputT
+from src.typing import StateT, ContextT, InputT, OutputT
 from src.tool.comp_5112 import execute_script, write_script
 from src.utils import DirectionRouter
 from src.utils.decorator import add_note_docstring
@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterAgent(module_path=__name__, name='coding')
-@RegisterNode(module_path=__name__, name='coding')
+@RegisterAgent(module=__name__, name='coding')
+@RegisterNode(module=__name__, name='coding')
 class CodingAgent(
     BaseNode,
     Generic[StateT, ContextT, InputT, OutputT],

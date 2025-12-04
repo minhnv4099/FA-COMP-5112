@@ -31,7 +31,7 @@ from src.agent.critic import CriticAgent
 from src.node.base import BaseNode
 from src.utils import DirectionRouter
 from src.registry import RegisterAgent, RegisterNode
-from src.types import StateT, ContextT, InputT, OutputT
+from src.typing import StateT, ContextT, InputT, OutputT
 from src.utils.decorator import add_note_docstring
 from src.utils.exception import NoRenderImages
 from src.utils.file import load_image_content, load_prompt_template_file
@@ -47,8 +47,8 @@ CriticSolutionType: TypeAlias = Type[dict[int, list[dict[Literal['critic', 'solu
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterAgent(module_path=__name__, name='verification')
-@RegisterNode(module_path=__name__, name='verification')
+@RegisterAgent(module=__name__, name='verification')
+@RegisterNode(module=__name__, name='verification')
 class VerificationAgent(
     CriticAgent,
     BaseNode,
