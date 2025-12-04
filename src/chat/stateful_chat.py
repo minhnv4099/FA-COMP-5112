@@ -31,7 +31,7 @@ from langgraph.types import RetryPolicy
 from langgraph.runtime import Runtime
 
 from src.registry import RegisterChat
-from src.types import ContextT, StateT, OutputT, ToolSchema
+from src.typing import ContextT, StateT, OutputT, ToolSchema
 from src.chat.mixin import GraphBasedMixin, StatefulChatMixin
 from src.chat.base import BaseChat, LanguageModelInput
 from src.chat.tool_call_chat import ToolCallGenerateChat, ToolCallExecuteChat
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@RegisterChat(module_path=__name__, name='stateful_chat')
+@RegisterChat(module=__name__, name='stateful_chat')
 class StatefulChat(
     StatefulChatMixin,
     GraphBasedMixin,
@@ -260,7 +260,7 @@ class StatefulChat(
         )
 
 
-@RegisterChat(module_path=__name__, name='tool_call_generate_stateful_chat')
+@RegisterChat(module=__name__, name='tool_call_generate_stateful_chat')
 class ToolCallGenerateStatefulChat(
     StatefulChat,
     ToolCallGenerateChat,
@@ -348,14 +348,14 @@ class ToolCallGenerateStatefulChat(
         """A node handling tool calls in last messages. To execute tool or parse args as structured output"""
         last_ai_message = state['messages'][-1]
         tool_based_messages = [
-            self._internal_tool_call(tool_call=tool_call)
+            self._internal_call_tool(tool_call=tool_call)
             for tool_call in last_ai_message.tool_calls
         ]
 
         return {'messages': tool_based_messages}
 
 
-@RegisterChat(module_path=__name__, name='tool_call_execute_stateful_chat')
+@RegisterChat(module=__name__, name='tool_call_execute_stateful_chat')
 class ToolCallExecuteStatefulChat(
     ToolCallGenerateStatefulChat,
     # Inherit `_internal_tool_call`

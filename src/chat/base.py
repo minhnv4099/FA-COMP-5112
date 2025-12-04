@@ -51,7 +51,7 @@ _DEFAULT_MODEL_NAME = "meta-llama/llama-3.3-70b-instruct:free"
 _DEFAULT_MODEL_PROVIDER = "openrouter"
 
 
-@RegisterChat(module_path=__name__, name='base_chat')
+@RegisterChat(module=__name__, name='base_chat')
 class BaseChat(ChatMixin):
     """The Base Chat class acting as an LLM"""
 
@@ -171,7 +171,7 @@ class BaseChat(ChatMixin):
     # TODO: move to llm engine
     def _check_chat_model(self):
         if self.chat_model is not None:
-            msg = f"Use pre-defined chat model {repr(self.chat_model.__class__)!r}"
+            msg = f"Use pre-defined chat {repr(self.llm_engine.__class__)!r} with llm {self.llm_engine.model_name!r}"
             if isinstance(self.chat_model, BaseChat):
                 if self.chat_model.__class__ is not BaseChat:
                     msg = (f"[CRITICAL]-Now we only accept chat_model of BaseChat class, not subclasses, but got {self.chat_model.__class__!r}. "
@@ -201,6 +201,9 @@ class BaseChat(ChatMixin):
             openai_api_base=self.endpoint_url,  # type: ignore
             openai_api_key=self.model_api_key,  # type: ignore
             temperature=0.7,
+            max_tokens=2000,
+            streaming=False,
+            disable_streaming=True,
             rate_limiter=InMemoryRateLimiter(
                 requests_per_second=0.1,
                 check_every_n_seconds=0.1,

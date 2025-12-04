@@ -23,7 +23,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.utils.interactive_env import is_interactive_env
 from langgraph.checkpoint.memory import InMemorySaver
 
-from src.types import MappingLike
+from src.typing import ListLike
 from src.utils.decorator import add_note_docstring
 
 if TYPE_CHECKING:
@@ -134,8 +134,8 @@ class ToolCallChatMixin(ABC, metaclass=ABCMeta):
         return AIMessage(content=ai_content)
 
     @classmethod
-    def _convert_to_list(cls, seq: Union[Any, Iterable[Any]]) -> list[Any]:
-        if seq and not isinstance(seq, MappingLike):
+    def _convert_to_list(cls, seq: Union[Any, Iterable]) -> list[Any]:
+        if seq and not isinstance(seq, ListLike):
             seq = [seq, ]
 
         return seq or []
