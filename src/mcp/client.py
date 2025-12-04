@@ -2,21 +2,30 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+from __future__ import annotations
+
+import asyncio
 import logging
 import functools
 import os.path
 
-from typing import Optional, Any, Union
+from typing import Optional, Any, Union, Coroutine, final, TYPE_CHECKING
+from langchain_mcp_adapters.tools import convert_mcp_tool_to_langchain_tool
 from mcp.client.session import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
-from mcp.types import AnyUrl
+from mcp.types import AnyUrl, Tool
 from mcp.types import CallToolResult, ReadResourceResult, GetPromptResult
 from contextlib import AsyncExitStack
 
-logger = logging.getLogger("MCPClient")
+if TYPE_CHECKING:
+    from langchain_core.messages import ToolMessage
+    from langchain_core.tools import BaseTool
+    from langchain_core.tools.base import ToolCall
+
+logger = logging.getLogger(__name__)
 
 
-class MCPClient:
+class MCPClientToolExecutor:
 
     session: Optional[ClientSession]
     exit_stack: Optional[AsyncExitStack]
@@ -30,9 +39,39 @@ class MCPClient:
         **kwargs,
     ):
         # Initialize session and client objects
+        self.is_connected = False
         self.session = session
         self.exit_stack = exit_stack or AsyncExitStack()
         self.server_script_path = server_script_path
+        self.run(self.connect_to_server(server_script_path))
+        self._tools: list = []
+
+    @property
+    def tools(self) -> list[Tool]:
+        return self._tools or self.run(self.list_tools())
+
+    @property
+    def tool_names(self):
+        return [
+            tool.name
+            for tool in self.tools
+        ]
+
+    def mcp_to_langchain_tool(self, tool: Tool):
+        return convert_mcp_tool_to_langchain_tool(tool=tool, session=self.session)
+
+    def run_structured_tool(self, tool: BaseTool, tool_call: ToolCall) -> ToolMessage:
+        return self.run(tool.ainvoke(input=tool_call))
+
+    @staticmethod
+    @final
+    def run(coro: Coroutine[Any, Any, Any]) -> Any:
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = asyncio.get_event_loop()
+
+        return current_loop.run_until_complete(coro)
 
     @staticmethod
     def check_session(func: callable):
@@ -52,10 +91,10 @@ class MCPClient:
             List of tools
         """
         response = await self.session.list_tools()
-        tools = response.tools
-        logger.info(f"[CLIENT] - Available TOOLS: {[tool.name for tool in tools]}")
+        self._tools = response.tools
+        # logger.info(f"[CLIENT] - Tools: {[tool.name for tool in tools]}")
 
-        return tools
+        return self.tools
 
     @check_session
     async def list_resources(self):
@@ -66,7 +105,7 @@ class MCPClient:
         """
         response = await self.session.list_resources()
         resources = response.resources
-        logger.info(f"[CLIENT] - Available RESOURCES: {[resource.name for resource in resources]}")
+        # logger.info(f"[CLIENT] - Available RESOURCES: {[resource.name for resource in resources]}")
 
         return resources
 
@@ -79,7 +118,7 @@ class MCPClient:
         """
         response = await self.session.list_prompts()
         prompts = response.prompts
-        logger.info(f"[CLIENT] - Available PROMPTS : {[prompt.name for prompt in prompts]}")
+        # logger.info(f"[CLIENT] - Available PROMPTS : {[prompt.name for prompt in prompts]}")
 
         return prompts
 
@@ -138,6 +177,10 @@ class MCPClient:
         Args:
             server_script_path: Path to the server script (.py or .js)
         """
+        if self.is_connected:
+            logger.warning(f"Have already connected to server!!!")
+            return
+
         assert os.path.isfile(server_script_path)
 
         is_python = server_script_path.endswith('.py')
@@ -158,7 +201,8 @@ class MCPClient:
 
         await self.session.initialize()
 
-        logger.info(f"[CLIENT] - Connected to Server at '{server_script_path}'")
+        self.is_connected = True
+        logger.info(f"Connected to Server at '{server_script_path}'")
 
     @check_session
     async def cleanup(self):
