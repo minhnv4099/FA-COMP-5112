@@ -3,7 +3,6 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 from src.tool.schema import (
-    BaseToolSchema,
     PythonFileWriteArgsSchema,
     PythonFileExecuteArgsSchema,
     BashCommandArgsSchema,

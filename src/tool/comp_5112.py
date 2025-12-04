@@ -3,7 +3,7 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import os
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 from typing_extensions import override
 
 from langchain_core.callbacks import CallbackManagerForToolRun
@@ -11,22 +11,25 @@ from langchain_core.tools import tool
 
 from src.registry import RegisterTool
 from src.tool.rag import QueryRetriever
-from src.tool.schema import QueryRetrieveArgsSchema, BaseToolSchema
+from src.tool.schema import QueryRetrieveArgsSchema
 from src.utils import file
+
+if TYPE_CHECKING:
+    from src.typing import ToolSchema
 
 
 class BlenderRetrieverArgsSchema(QueryRetrieveArgsSchema):
     """Use this schema when need writing or saving Python script/code to a file"""
 
 
-@RegisterTool(module_path=__name__, name="blender_query_retriever")
+@RegisterTool(module=__name__, name="blender_query_retriever")
 class BlenderQueryRetriever(QueryRetriever):
 
     name: str = 'blender_query_retriever'
 
     description: str = """Always use this tool to retrieve documents, supporting the query."""
 
-    args_schema: type[BaseToolSchema] = QueryRetrieveArgsSchema
+    args_schema: ToolSchema = QueryRetrieveArgsSchema
 
     @override
     def _run(self, query: str, *args: Any, **kwargs: Any) -> Any:

@@ -10,9 +10,9 @@ from typing import Any, TYPE_CHECKING
 from langchain_community.vectorstores import FAISS
 
 from src.registry import RegisterTool
-from src.tool.base import BaseToolSchema
 from src.tool.schema import QueryRetrieveArgsSchema
 from src.tool.base import BaseDefinedTool
+from src.typing import ToolSchema
 from src.utils.embeddings import load_openai_embeddings, load_gpt4all_embeddings
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@RegisterTool(module_path=__name__, name='retrieve_query')
+@RegisterTool(module=__name__, name='retrieve_query')
 class QueryRetriever(BaseDefinedTool):
     """"""
 
@@ -29,7 +29,7 @@ class QueryRetriever(BaseDefinedTool):
 
     description: str = """This tool is called when need to retrieve documents based on query"""
 
-    args_schema: type[BaseToolSchema] = QueryRetrieveArgsSchema
+    args_schema: ToolSchema = QueryRetrieveArgsSchema
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)

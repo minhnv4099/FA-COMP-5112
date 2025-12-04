@@ -4,14 +4,13 @@
 #
 """Contain args schemas for tools"""
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from src.registry import RegisterToolSchema
-from src.tool.base import BaseToolSchema
 
 
-@RegisterToolSchema(module_path=__name__, name='write_python_file_schema')
-class PythonFileWriteArgsSchema(BaseToolSchema):
+@RegisterToolSchema(module=__name__, name='write_python_file')
+class PythonFileWriteArgsSchema(BaseModel):
     """Use this schema when need writing or saving Python script/code to a file"""
 
     script: str = Field(..., description='The script')
@@ -19,29 +18,29 @@ class PythonFileWriteArgsSchema(BaseToolSchema):
     file: str = Field(..., description='the python file')
 
 
-@RegisterToolSchema(module_path=__name__, name='execute_python_file_schema')
-class PythonFileExecuteArgsSchema(BaseToolSchema):
+@RegisterToolSchema(module=__name__, name='execute_python_file')
+class PythonFileExecuteArgsSchema(BaseModel):
     """Use this schema when need to execute a Python code file"""
 
     file: str = Field(..., description='the python file')
 
 
-@RegisterToolSchema(module_path=__name__, name='bash_command_schema')
-class BashCommandArgsSchema(BaseToolSchema):
+@RegisterToolSchema(module=__name__, name='bash_command')
+class BashCommandArgsSchema(BaseModel):
     """Use this schema when generating bash command"""
 
     command: list[str] = Field(..., description='The bash command, split to list by white space')
 
 
-@RegisterToolSchema(module_path=__name__, name='read_url_schema')
-class UrlReaderArgsSchema(BaseToolSchema):
+@RegisterToolSchema(module=__name__, name='url_reader')
+class UrlReaderArgsSchema(BaseModel):
     """Use this schema when need to read content in an url"""
 
     url: str = Field(..., description='The url need to read content')
 
 
-@RegisterToolSchema(module_path=__name__, name='retrieve_query_schema')
-class QueryRetrieveArgsSchema(BaseToolSchema):
+@RegisterToolSchema(module=__name__, name='retrieve_query')
+class QueryRetrieveArgsSchema(BaseModel):
     """Use this schema when need to retrieve relevant documents from vector store aligned with the query"""
 
     query: str = Field(..., description="The given query needing to retrieve")

@@ -4,12 +4,9 @@
 #
 from abc import ABC
 
-from pydantic import BaseModel, ConfigDict
+from src.typing import ToolSchema
+from pydantic import ConfigDict
 from langchain_core.tools.base import BaseTool
-
-
-class BaseToolSchema(BaseModel):
-    """The Base Tool Schema class"""
 
 
 class BaseDefinedTool(BaseTool, ABC):
@@ -21,6 +18,6 @@ class BaseDefinedTool(BaseTool, ABC):
 
     handle_tool_error: str = "Error appears when executing tool"
 
-    args_schema: type[BaseToolSchema]
+    args_schema: ToolSchema
 
     model_config = ConfigDict(extra='allow')

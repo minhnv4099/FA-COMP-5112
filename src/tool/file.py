@@ -2,14 +2,13 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-import os.path
-from typing import Any, Type, Optional
+from typing import Any, Optional
 from typing_extensions import override
 from langchain_core.runnables import RunnableConfig
 from langchain.tools import ToolRuntime
-from pydantic import BaseModel
 
 from src.registry import RegisterTool
+from src.typing import ToolSchema
 from src.tool.base import BaseDefinedTool
 from src.tool.schema import (
     PythonFileExecuteArgsSchema,
@@ -18,7 +17,7 @@ from src.tool.schema import (
 )
 
 
-@RegisterTool(module_path=__name__, name='write_script')
+@RegisterTool(module=__name__, name='write_script')
 class PythonFileWriter(BaseDefinedTool):
     """"""
 
@@ -30,7 +29,7 @@ class PythonFileWriter(BaseDefinedTool):
 
     handle_tool_error: str = "Error appears when write script to Python file"
 
-    args_schema: Type[BaseModel] = PythonFileWriteArgsSchema
+    args_schema: ToolSchema = PythonFileWriteArgsSchema
 
     def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
@@ -48,7 +47,7 @@ class PythonFileWriter(BaseDefinedTool):
         return f"Wrote script to file: '{file}'"
 
 
-@RegisterTool(module_path=__name__, name='execute_python')
+@RegisterTool(module=__name__, name='execute_python')
 class PythonFileExecutor(BaseDefinedTool):
     """"""
 
@@ -58,7 +57,7 @@ class PythonFileExecutor(BaseDefinedTool):
 
     handle_tool_error: str = "Error appears when executing Python file"
 
-    args_schema: Type[BaseModel] = PythonFileExecuteArgsSchema
+    args_schema: ToolSchema = PythonFileExecuteArgsSchema
 
     @override
     def _run(
@@ -92,7 +91,7 @@ class PythonFileExecutor(BaseDefinedTool):
         return result
 
 
-@RegisterTool(module_path=__name__, name='bash_execute')
+@RegisterTool(module=__name__, name='bash_execute')
 class BashExecutor(BaseDefinedTool):
     """"""
 
@@ -102,7 +101,7 @@ class BashExecutor(BaseDefinedTool):
 
     handle_tool_error: str = "Error appears when executing a bash command"
 
-    args_schema: Type[BaseModel] = BashCommandArgsSchema
+    args_schema: ToolSchema = BashCommandArgsSchema
 
     @override
     def _run(self, command: list[str]) -> Any:
