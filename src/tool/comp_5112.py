@@ -9,13 +9,14 @@ from typing_extensions import override
 from langchain_core.callbacks import CallbackManagerForToolRun
 from langchain_core.tools import tool
 
+from src.typing import ToolSchema
 from src.registry import RegisterTool
 from src.tool.rag import QueryRetriever
 from src.tool.schema import QueryRetrieveArgsSchema
 from src.utils import file
 
 if TYPE_CHECKING:
-    from src.typing import ToolSchema
+    ...
 
 
 class BlenderRetrieverArgsSchema(QueryRetrieveArgsSchema):

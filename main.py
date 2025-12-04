@@ -3,25 +3,40 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s][%(levelname)s][%(name)s][%(funcName)s] - %(message)s #%(lineno)d'
+)
 
 from src.builder import Builder
 from src.utils import find_load_env
-from src.chat import BaseChat, StatefulChat, ToolCallGenerateChat
+from src.mcp.client import MCPClientToolExecutor
 
 find_load_env()
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 def main():
-    llm = Builder.build(type='llm')
-    chat = StatefulChat(llm_engine=llm)
+    llm_engine = Builder.build(type='llm', model_name="openai/gpt-5-nano")
+    mcp_client = MCPClientToolExecutor(server_script_path="src/mcp/server/file.py")
 
-    response = chat.invoke(input="hello my name is Minh. Who are you?")
-    response = chat.invoke(input='What my name?')
+    chat = Builder.build(
+        type='agent',
+        interface='react_stateful_agent',
+        llm_engine=llm_engine,
+        mcp_client=mcp_client,
+        tool_schemas=[
+            {
+                "type": "tool",
+                "name": "url_reader"
+            }
+        ])
 
-    chat.print_conversation()
+    response = chat.invoke('Hello, My name is Minh. what file .env says')
+    response.pretty_print()
+    response = chat.invoke('Summarize what is my name')
+    response.pretty_print()
 
 
 if __name__ == '__main__':
