@@ -19,7 +19,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command, Interrupt
 
 from src.registry import fetch_registered, RegisterGraph
-from src.types import StateT, ContextT, InputT, OutputT, NodeT
+from src.typing import StateT, ContextT, InputT, OutputT, NodeT
 from src.utils.constants import ASSETS_DIR
 from src.utils.exception import BreakGraphOperation, NoNodeError
 from src.utils.decorator import add_note_docstring
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@RegisterGraph(module_path=__name__, name='base')
+@RegisterGraph(module=__name__, name='base')
 class BaseGraph(
     Generic[StateT, ContextT, InputT, OutputT, NodeT]
 ):

@@ -21,7 +21,7 @@ class BaseOutput(BaseModel):
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterChatOutputSchema(module_path=__name__, name='planner')
+@RegisterChatOutputSchema(module=__name__, name='planner')
 class PlannerOutput(BaseOutput):
     """Because this schema acts as a structured output, always only use this schema when have enough information to
     get the final response. Don't use this schema along with tool calls. This schema contains a sequence of
@@ -32,7 +32,7 @@ class PlannerOutput(BaseOutput):
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterChatOutputSchema(module_path=__name__, name='retriever')
+@RegisterChatOutputSchema(module=__name__, name='retriever')
 class RetrieverOutput(BaseOutput):
     """Always use this tool to structure your response"""
 
@@ -41,7 +41,7 @@ class RetrieverOutput(BaseOutput):
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterChatOutputSchema(module_path=__name__, name='coding')
+@RegisterChatOutputSchema(module=__name__, name='coding')
 class CodingOutput(BaseOutput):
     """Always use this output schema to response user requires generating code"""
 
@@ -63,7 +63,7 @@ class CriticSolutionPair(BaseOutput):
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterChatOutputSchema(module_path=__name__, name='critic')
+@RegisterChatOutputSchema(module=__name__, name='critic')
 class CriticOutput(BaseOutput):
     """Output schema for the critic agent. Always use it"""
 
@@ -87,7 +87,7 @@ class SatisfiedSolution(BaseOutput):
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
-@RegisterChatOutputSchema(module_path=__name__, name='verification')
+@RegisterChatOutputSchema(module=__name__, name='verification')
 class VerificationOutput(BaseOutput):
     """Output schema for the verification agent. Always use it"""
 

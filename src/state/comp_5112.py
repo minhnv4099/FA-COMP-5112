@@ -12,7 +12,7 @@ from src.state.base import MutilAgentState
 __all__ = scan_module(globals())
 
 
-@RegisterState(module_path=__name__, name='planner')
+@RegisterState(module=__name__, name='planner')
 class PlannerState(MutilAgentState):
     """The input state for Planner Agent"""
 
@@ -20,7 +20,7 @@ class PlannerState(MutilAgentState):
     """Given task provided by user prompt"""
 
 
-@RegisterState(module_path=__name__, name='retriever')
+@RegisterState(module=__name__, name='retriever')
 class RetrieverState(MutilAgentState):
     """The input state for Retriever Agent"""
 
@@ -31,7 +31,7 @@ class RetrieverState(MutilAgentState):
     """Current task for Coding Agent: *generate script*, *fix error* and *apply improvements*"""
 
 
-@RegisterState(module_path=__name__, name='coding')
+@RegisterState(module=__name__, name='coding')
 class CodingState(MutilAgentState):
     """The input state for Coding Agent
     The Coding Agent has 2 main responsibilities:
@@ -69,7 +69,7 @@ class CodingState(MutilAgentState):
     """Current task for Coding Agent: *generate script*, *fix error* and *apply improvements*"""
 
 
-@RegisterState(module_path=__name__, name='critic')
+@RegisterState(module=__name__, name='critic')
 class CriticState(MutilAgentState):
     """The input state for Critic Agent"""
 
@@ -83,7 +83,7 @@ class CriticState(MutilAgentState):
     """The original task given by user"""
 
 
-@RegisterState(module_path=__name__, name='verification')
+@RegisterState(module=__name__, name='verification')
 class VerificationState(MutilAgentState):
     """The input state for Verification Agent"""
 
@@ -100,7 +100,7 @@ class VerificationState(MutilAgentState):
     """Additional prompt provided by user"""
 
 
-@RegisterState(module_path=__name__, name='user')
+@RegisterState(module=__name__, name='user')
 class UserPromptUpState(MutilAgentState):
     """The input state for User Agent"""
 
@@ -114,7 +114,7 @@ class UserPromptUpState(MutilAgentState):
     """Sequence of rendered image paths after criticising"""
 
 
-@RegisterState(module_path=__name__, name='shared')
+@RegisterState(module=__name__, name='shared')
 class SharedState(
     PlannerState,
     RetrieverState,
@@ -126,7 +126,7 @@ class SharedState(
     """The shared state contains all state channels"""
 
 
-@RegisterState(module_path=__name__, name='comp_5112_output')
+@RegisterState(module=__name__, name='comp_5112_output')
 class COMP5112Output(TypedDict):
 
     agent_response: Annotated[Any, ...]

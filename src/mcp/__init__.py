@@ -2,4 +2,4 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from .client import MCPClient
+from .client import MCPClientToolExecutor

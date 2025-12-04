@@ -93,8 +93,10 @@ async def read_file(context: Context, file_path: Union[str, Path]) -> str | byte
     Returns:
         Content in file
     """
-    with open(file_path, 'r') as f:
-        return f.read()
+    try:
+        return Path(file_path).read_text()
+    except FileNotFoundError as e:
+        return str(e)
 
 
 @mcp_server.tool(
@@ -105,7 +107,7 @@ async def read_file(context: Context, file_path: Union[str, Path]) -> str | byte
     icons=ICONS,
     annotations=None
 )
-def count_lines_in_file(file_path: Union[str, Path]) -> int:
+def count_lines_in_file(file_path: Union[str, Path]) -> int | str:
     """Count lines in file
 
     Args:
@@ -114,8 +116,11 @@ def count_lines_in_file(file_path: Union[str, Path]) -> int:
     Returns:
         Number of lines
     """
-    with open(file_path, 'r') as f:
-        return len(f.readlines())
+    try:
+        with open(file_path, 'r') as f:
+            return len(f.readlines())
+    except FileNotFoundError as e:
+        return str(e)
 
 
 @mcp_server.tool(
@@ -126,7 +131,7 @@ def count_lines_in_file(file_path: Union[str, Path]) -> int:
     icons=ICONS,
     annotations=None
 )
-def count_words_in_file(file_path: Union[str, Path]) -> int:
+def count_words_in_file(file_path: Union[str, Path]) -> int | str:
     """Count words in file
 
     Args:
@@ -135,8 +140,11 @@ def count_words_in_file(file_path: Union[str, Path]) -> int:
     Returns:
         Number of words (separated by space)
     """
-    with open(file_path, 'r') as f:
-        return len(f.read().split(' '))
+    try:
+        with open(file_path, 'r') as f:
+            return len(f.read().split(' '))
+    except FileNotFoundError as e:
+        return str(e)
 
 
 @mcp_server.tool(
@@ -157,6 +165,8 @@ def list_dir(dir: Union[str, Path]) -> list[str]:
          List of items in the dir
     """
     import os
+    if not os.path.isdir(dir):
+        return []
     return os.listdir(dir)
 
 

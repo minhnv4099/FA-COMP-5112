@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from src.registry import RegisterState
 
 
-@RegisterState(module_path=__name__, name='base_context')
+@RegisterState(module=__name__, name='base_context')
 @dataclass(kw_only=True)
 class BaseContext:
 

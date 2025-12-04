@@ -10,7 +10,7 @@ from langgraph.runtime import Runtime
 from langchain_core.messages import BaseMessage, AIMessage
 
 from src.registry import RegisterNode
-from src.types import StateT, InputT, ContextT, OutputT, ToolSchema
+from src.typing import StateT, InputT, ContextT, OutputT, ToolSchema
 from src.agent.react_loop import LoopReactAgent
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@RegisterNode(module_path=__name__, name='base_node')
+@RegisterNode(module=__name__, name='base_node')
 class BaseNode(
     LoopReactAgent,
     Generic[StateT, ContextT, InputT, OutputT, ToolSchema]
