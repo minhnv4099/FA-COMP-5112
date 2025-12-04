@@ -9,10 +9,11 @@ import importlib
 from collections import defaultdict
 from typing import Union, TYPE_CHECKING, Optional
 
-from src.types import ClassLike, SchemaLike, MappingLike
+from src.typing import ClassLike, FunctionLike, MappingLike
 from src.utils.exception import NotFoundSchema, NotFoundTool
 
 if TYPE_CHECKING:
+    from src.types import RegisterFetchMetadata
     from src.tool.base import BaseDefinedTool
 
 logging.basicConfig(level=logging.INFO)
@@ -25,9 +26,9 @@ FUNCTION_REGISTRY = defaultdict(dict)
 """Registry used to to register function"""
 
 
-def load_class(type: str, name: str) -> Union[ClassLike, callable]:
-    _type = type.lower()
-    _name = name.lower()
+def load_class(metadata: RegisterFetchMetadata) -> ClassLike:
+    _type = metadata['type'].lower()
+    _name = metadata['name'].lower()
 
     if _type not in REGISTRY:
         raise KeyError(f"'{_type}' not found. Available types: {list(REGISTRY.keys())}")
@@ -47,12 +48,12 @@ def load_class(type: str, name: str) -> Union[ClassLike, callable]:
 
 def load_tool(name: str, **kwargs) -> BaseDefinedTool:
     try:
-        return load_class(type='tool', name=name)(**kwargs)
+        return load_class(metadata={'type': 'tool', 'name': name})(**kwargs)
     except KeyError as e:
         raise NotFoundTool
 
 
-def fetch_registered(metadata: Optional[MappingLike]) -> Union[None, SchemaLike]:
+def fetch_registered(metadata: RegisterFetchMetadata) -> Union[None, ClassLike, FunctionLike]:
     if metadata is None:
         return None
 
@@ -61,9 +62,9 @@ def fetch_registered(metadata: Optional[MappingLike]) -> Union[None, SchemaLike]
 
     try:
         if metadata['type'] == 'tool':
-            return load_tool(name=metadata['name'], **metadata.get('tool_kwargs', dict()))
+            return load_tool(name=metadata['name'], **metadata.get('kwargs', dict()))
 
-        return load_class(type=metadata['type'], name=metadata['name'])
+        return load_class(metadata)
 
     except KeyError as e:
         raise NotFoundSchema(e.args)
@@ -79,7 +80,7 @@ class Register:
     Args:
         type (str):
             Type of class (node, state, agent, chat, ...). MUST be lowercase
-        module_path (str):
+        module (str):
             Path to module containing this class. MUST be lowercase
         name (str):
             Unique name of class in ``type`` list. MUST be lowercase
@@ -88,26 +89,28 @@ class Register:
     def __init__(
         self,
         type: str,
-        module_path: str,
+        module: str,
         name: Union[str, list[str]]
     ):
-        self.module_path = module_path.lower()
+        self.module = module.lower()
         self.type = type.lower()
         self.name = name.lower()
 
     def __call__(self, symbol: ClassLike) -> ClassLike:
+        # if isinstance(symbol, BaseDefinedTool):
+        #     symbol.name = self.name
+
         name_to_class = REGISTRY[self.type]
 
         if self.name in name_to_class:
             raise ValueError(
-                f"'{self.name}' exists. Existing names in type '{self.type}': {', '.join([f'{_name}' for _name in name_to_class])}")
+                f"{self.name!r} exists. Existing names in type {self.type!r}: {', '.join([f'{_name!r}' for _name in name_to_class])}")
         else:
-            # logger.info(f"'{symbol.__name__}' has registered as '{self.type}' with path: '{symbol.__module__}'")
             ...
 
         name_to_class[self.name] = {
             'symbol_name': symbol.__name__,
-            'path': self.module_path,
+            'path': self.module,
             'symbol': symbol
         }
 
@@ -122,8 +125,8 @@ class _Register(Register):
 
     type: str
 
-    def __init__(self, module_path: str, name: str):
-        super().__init__(type=self.type, module_path=module_path, name=name)
+    def __init__(self, module: str, name: str):
+        super().__init__(type=self.type, module=module, name=name)
 
 
 class RegisterState(_Register):

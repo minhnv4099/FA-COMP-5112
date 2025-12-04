@@ -48,16 +48,17 @@ class Builder:
     def build(
         cls,
         type: Literal['chat', 'agent', 'graph', 'llm'],
-        name: Available_LLM_interfaces = None,
+        interface: Available_LLM_interfaces = None,
         **kwargs
     ):
         """No need to define name in ``config``. Pass by ``name``"""
+        config = defaultdict(lambda: None)
         if type == 'llm':
             type = 'chat'
-            name = 'base_chat'
+            interface = 'base_chat'
 
-        config = kwargs if kwargs else defaultdict(lambda: None)
-        config['name'] = name if name else ...
+        config['name'] = interface if interface else ...
+        config.update(kwargs)
 
         if type == 'chat':
             return cls.build_chat(config)
@@ -72,8 +73,8 @@ class Builder:
         agent_config: dict,
     ) -> Union[BaseAgent]:
         """"""
-        logger.info(f"Create '{agent_config['name']}' agent: {agent_config['model_name']}")
-        agent_cls = load_class(type='agent', name=agent_config['name'])
+        logger.info(f"Create {agent_config['name']!r} from {agent_config['model_name']!r}")
+        agent_cls = load_class(metadata={'type': 'agent', 'name': agent_config['name']})
 
         return agent_cls(**agent_config)
 
@@ -82,8 +83,8 @@ class Builder:
         cls,
         chat_config: dict
     ) -> BaseChat | StatefulChat:
-        logger.info(f"Create '{chat_config['name']}' chat: {chat_config['model_name']}")
-        chat_cls = load_class(type='chat', name=chat_config['name'])
+        logger.info(f"Create {chat_config['name']!r} from {chat_config['model_name']!r}")
+        chat_cls = load_class(metadata={'type': 'chat', 'name': chat_config['name']})
 
         return chat_cls(**chat_config)
 
