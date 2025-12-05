@@ -57,8 +57,10 @@ class LoopReactAgent(
         *args,
         persistent_on_invoke: Optional[bool] = None,
         option: Literal['1llm', '2llm'] = '1llm',
+        max_attempts: int = 10,
         **kwargs
     ):
+        self.max_attempts = max_attempts
         if option == '1llm':
             self._build_internal_graph = self._build_internal_graph_option_1
         else:
