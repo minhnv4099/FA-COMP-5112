@@ -23,7 +23,7 @@ from typing_extensions import override
 from langchain_core.prompt_values import PromptValue
 from langchain_core.runnables import RunnableConfig
 
-from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
+from langchain_core.messages import BaseMessage, SystemMessage, AIMessage, HumanMessage
 from langchain_core.prompts import SystemMessagePromptTemplate
 from langgraph.graph import StateGraph
 from langgraph.graph import END, START
@@ -35,8 +35,7 @@ from src.typing import ContextT, StateT, OutputT, ToolSchema
 from src.chat.mixin import GraphBasedMixin, StatefulChatMixin
 from src.chat.base import BaseChat, LanguageModelInput
 from src.chat.tool_call_chat import ToolCallGenerateChat, ToolCallExecuteChat
-from src.state.base import BaseState
-from src.context.base import BaseContext
+from src.types import BaseState, BaseContext
 from src.utils.decorator import add_note_docstring
 from src.utils.exception import EmptyMessage
 
@@ -330,6 +329,13 @@ class ToolCallGenerateStatefulChat(
         Returns:
             The generated response.
         """
+        system_message = self._make_system_prompt(None)
+        if system_message:
+            input = [
+                system_message,
+                HumanMessage(content=input)
+            ]
+
         return super().invoke(
             input=input,
             config=config,
