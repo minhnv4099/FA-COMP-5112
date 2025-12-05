@@ -2,6 +2,26 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+from __future__ import annotations
+
+from src.state.comp_5112 import (
+    MutilAgentState,
+    PlannerState,
+    RetrieverState,
+    CodingState,
+    CriticState,
+    VerificationState,
+    UserPromptUpState,
+    SharedState
+)
+from src.chat_output.comp_5112 import (
+    BaseOutput,
+    PlannerOutput,
+    RetrieverOutput,
+    CodingOutput,
+    CriticOutput,
+    VerificationOutput,
+)
 from src.chat import (
     BaseChat,
     ToolCallGenerateChat,
@@ -22,17 +42,6 @@ from src.agent import (
     VerificationAgent,
     UserAgent
 )
-from src.state import (
-    BaseState,
-    MutilAgentState,
-    PlannerState,
-    RetrieverState,
-    CodingState,
-    CriticState,
-    VerificationState,
-    UserPromptUpState,
-    SharedState
-)
 
 from src.tool import (
     PythonFileWriter,
@@ -41,14 +50,6 @@ from src.tool import (
     BashExecutor,
     UrlReader,
     BlenderQueryRetriever
-)
-from src.chat_output import (
-    BaseOutput,
-    PlannerOutput,
-    RetrieverOutput,
-    CodingOutput,
-    CriticOutput,
-    VerificationOutput,
 )
 from src.utils import (
     scan_module,
