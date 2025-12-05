@@ -4,20 +4,14 @@
 #
 from typing import Literal
 from typing_extensions import Sequence
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from src.registry import RegisterChatOutputSchema
 from src.utils.decorator import add_note_docstring
 from src.utils import scan_module
+from src.types import BaseOutput
 
 __all__ = scan_module(globals())
-
-
-class BaseOutput(BaseModel):
-    """Always use this schema and its subclasses to format the answers
-    This class is an abstractive class for all structured outputs in the graph"""
-
-    # content: str = Field(..., description='Content of ai response, ignore this field if there any other fields')
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")

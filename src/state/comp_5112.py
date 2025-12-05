@@ -7,7 +7,7 @@ from typing_extensions import Annotated, TypedDict
 
 from src.registry import RegisterState
 from src.utils import scan_module
-from src.state.base import MutilAgentState
+from src.types import MutilAgentState
 
 __all__ = scan_module(globals())
 
@@ -114,19 +114,13 @@ class UserPromptUpState(MutilAgentState):
     """Sequence of rendered image paths after criticising"""
 
 
+# TODO: change shared state
 @RegisterState(module=__name__, name='shared')
-class SharedState(
-    PlannerState,
-    RetrieverState,
-    CodingState,
-    CriticState,
-    VerificationState,
-    UserPromptUpState,
-):
+class SharedState(TypedDict):
     """The shared state contains all state channels"""
-
-
-@RegisterState(module=__name__, name='comp_5112_output')
-class COMP5112Output(TypedDict):
-
-    agent_response: Annotated[Any, ...]
+    planner_state: PlannerState
+    retriever_state: RetrieverState
+    coding_state: CodingState
+    critic_state: CriticState
+    verification_state: VerificationState
+    user_proxy_state: UserPromptUpState
