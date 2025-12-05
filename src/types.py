@@ -4,11 +4,17 @@
 #
 from __future__ import annotations
 
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, TYPE_CHECKING
 from typing_extensions import Annotated, TypedDict, deprecated, NotRequired, Required
 from dataclasses import dataclass, field
+from pydantic import BaseModel
+from langchain_core.messages import BaseMessage
+from langgraph.graph import add_messages
 
 from src.registry import RegisterState
+
+if TYPE_CHECKING:
+    ...
 
 
 @deprecated('No need')
@@ -41,3 +47,28 @@ class BaseContext:
     user_id: str = field(
         default='1304391',
     )
+
+
+class BaseOutput(BaseModel):
+    """Always use this schema and its subclasses to format the answers
+    This class is an abstractive class for all structured outputs"""
+
+
+class BaseState(TypedDict):
+    """The base class of state in graphs"""
+
+    id: Annotated[int, ...]
+    """ID of that state"""
+
+    messages: Annotated[list[BaseMessage],  add_messages]
+    """Sequence of messages of ``system``, ``user``, ``ai``, ``tool``, ``parser``"""
+
+
+class MutilAgentState(BaseState):
+    """The state class for multi-agent systems"""
+
+    agent_response: Annotated[Any, ...]
+    """"""
+
+    caller: Annotated[str, ...]
+    """The agent just called"""

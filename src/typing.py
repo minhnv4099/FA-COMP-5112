@@ -28,9 +28,6 @@ OutputT = TypeVar('OutputT', bound=StateLike)
 ContextT = TypeVar('ContextT', bound=StateLike)
 """The generic type of context (runtime) of a graph"""
 
-NodeT = TypeVar("NodeT", bound="BaseNode")
-"""The generic type of node"""
-
 SchemaLike = Union[BaseModel, dict]
 """The generic type for schema the chat model can bind"""
 
@@ -54,6 +51,12 @@ ListLike: TypeAlias = Union[Iterable, list, ListConfig]
 
 MappingLike: TypeAlias = Union[Mapping, dict, DictConfig]
 """Mapping like type"""
+
+NodeLike = Union["BaseNode", FunctionLike]
+"""The generic type of node"""
+
+NodeT = TypeVar("NodeT", bound=NodeLike)
+""""""
 
 __all__ = (
     'StateLike',
