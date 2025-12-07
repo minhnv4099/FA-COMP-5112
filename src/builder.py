@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Union, Literal
-from typing_extensions import TypedDict, TypeAlias
+from typing_extensions import TypeAlias
 from collections import defaultdict
 from src.graph.base import BaseGraph
 from src.registry import load_class

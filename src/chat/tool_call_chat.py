@@ -125,6 +125,24 @@ class ToolCallGenerateChat(
 
         raise ValueError(f"No tool name {name!r}.")
 
+    # TODO: change name of method
+    def _dynamic_input(self, input: LanguageModelInput, name: Optional[str] = "general_system_prompt"):
+        has_system_prompt = isinstance(input, list) and list(filter(lambda m: isinstance(m, SystemMessage), input))
+        if not has_system_prompt:
+            system_message = self._get_system_prompt(name=name)
+            if system_message:
+                if isinstance(input, str):
+                    hu_me = HumanMessage(content=input)
+                elif isinstance(input, HumanMessage):
+                    hu_me = input
+
+                return [
+                    system_message,
+                    hu_me
+                ]
+
+        return input
+
     def _get_system_prompt(self, name: Optional[str] = 'general_system_prompt'):
         try:
             system_message = SystemMessage(
@@ -145,13 +163,7 @@ class ToolCallGenerateChat(
         stop: Optional[list[str]] = None
     ) -> Union[AIMessage, ParsedTollCallMessage, ToolMessage]:
         """"""
-        system_message = self._get_system_prompt()
-        if system_message:
-            input = [
-                system_message,
-                HumanMessage(content=input)
-            ]
-
+        input = self._dynamic_input(input)
         ai_message = super().invoke(
             input=input,
             config=config,

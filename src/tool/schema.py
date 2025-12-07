@@ -2,7 +2,7 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-"""Contain args schemas for tools"""
+"""Contain args _schemas for tools"""
 
 from pydantic import BaseModel, Field
 

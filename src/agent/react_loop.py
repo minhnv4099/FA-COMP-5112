@@ -180,13 +180,7 @@ class LoopReactAgent(
         if self.persistent_on_invoke:
             self._reset_thread()
 
-        system_message = self._get_system_prompt()
-        if system_message:
-            input = [
-                system_message,
-                HumanMessage(content=input)
-            ]
-
+        input = self._dynamic_input(input)
         if isinstance(input, dict):
             input = self.chat_template.invoke(
                 input=input,

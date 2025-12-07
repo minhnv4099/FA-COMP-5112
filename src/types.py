@@ -7,11 +7,11 @@ from __future__ import annotations
 from typing import Any, Optional, Union, TYPE_CHECKING
 from typing_extensions import Annotated, TypedDict, deprecated, NotRequired, Required
 from dataclasses import dataclass, field
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
 from langgraph.graph import add_messages
 
-from src.registry import RegisterState
+from src.registry import RegisterState, RegisterChatOutputSchema
 
 if TYPE_CHECKING:
     ...
@@ -49,9 +49,12 @@ class BaseContext:
     )
 
 
+@RegisterChatOutputSchema(module=__name__, name='base')
 class BaseOutput(BaseModel):
     """Always use this schema and its subclasses to format the answers
     This class is an abstractive class for all structured outputs"""
+
+    # content: str = Field(..., description='The content of AI assistance')
 
 
 class BaseState(TypedDict):
