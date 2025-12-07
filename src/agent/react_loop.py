@@ -10,17 +10,15 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections import defaultdict
 from typing import Optional, Union, TYPE_CHECKING, Generic, Literal, Sequence, Any
 
-from langchain_core.prompt_values import PromptValue
 from langchain_core.prompts import SystemMessagePromptTemplate
 from typing_extensions import override
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import BaseMessage, SystemMessage, AIMessage, HumanMessage
 from langgraph.graph import StateGraph
-from langgraph.graph.state import END, START
+from langgraph.graph import END, START
 from langgraph.runtime import Runtime
 from langgraph.types import Command
 
@@ -182,6 +180,13 @@ class LoopReactAgent(
         if self.persistent_on_invoke:
             self._reset_thread()
 
+        system_message = self._get_system_prompt()
+        if system_message:
+            input = [
+                system_message,
+                HumanMessage(content=input)
+            ]
+
         if isinstance(input, dict):
             input = self.chat_template.invoke(
                 input=input,
@@ -215,7 +220,7 @@ class LoopReactAgent(
 
         if len(last_message.tool_calls) == 1:
             tool_call = last_message.tool_calls[0]
-            if not (self._is_langchain_tool(tool_call) or self._is_mcp_tool(tool_call)):
+            if self._is_structured_output(tool_call):
                 self.num_tries = 0
                 return Command(
                     update={
