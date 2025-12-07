@@ -329,7 +329,7 @@ class ToolCallGenerateStatefulChat(
         Returns:
             The generated response.
         """
-        system_message = self._make_system_prompt(None)
+        system_message = self._get_system_prompt(None)
         if system_message:
             input = [
                 system_message,

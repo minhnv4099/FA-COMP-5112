@@ -19,27 +19,18 @@ from langchain_core.tools import StructuredTool
 from typing_extensions import override, overload
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 from src.registry import RegisterChat, fetch_registered
-from src.typing import (
-    StateT,
-    OutputT,
-    ContextT,
-    ToolSchema,
-    MappingLike
-)
+from src.typing import ToolSchema, MappingLike
+
 from src.chat.base import BaseChat, LanguageModelInput
 from src.chat.mixin import ToolCallChatMixin
-from src.types import BaseOutput
 from src.message.parsed_tool_call import ParsedTollCallMessage
-from src.utils.decorator import must_override, add_note_docstring
-from src.mcp.client import MCPClientToolExecutor
+from src.utils.decorator import add_note_docstring
+from src.mcp.client import MCPClientProtocol
 
 if TYPE_CHECKING:
     from langchain_core.runnables import RunnableConfig
     from langchain_core.tools.base import ToolCall, BaseTool
-    from langchain_core.messages import (
-        ToolMessage,
-        BaseMessage,
-    )
+    from langchain_core.messages import ToolMessage
     from src.typing import SchemaLike
 
 logger = logging.getLogger(__name__)
@@ -54,13 +45,16 @@ class ToolCallGenerateChat(
 ):
     """The Chat class can generate tool calls, but not persistent."""
 
-    tool_schemas: list[Union[ToolSchema, dict]]
-    """Tool schemas"""
+    _schemas: dict[str, ToolSchema] = dict()
+    """Schemas to bind"""
 
-    chat_output: Union[ToolSchema, dict]
-    """Output schema"""
+    _langchain_tools: dict[str, ToolSchema] = dict()
+    """Langchain tools"""
 
-    mcp_client: MCPClientToolExecutor
+    _mcp_tools: dict[str, Union[BaseTool, StructuredTool]] = dict()
+    """MCP tools"""
+
+    mcp_client: Optional[MCPClientProtocol]
     """MCP Client with tools on MCP Server"""
 
     def __init_subclass__(cls, **kwargs):
@@ -69,22 +63,19 @@ class ToolCallGenerateChat(
     def __init__(
         self,
         *args,
-        tool_schemas: list[ToolSchema] = None,
-        chat_output: ToolSchema = None,
-        mcp_client: Optional[MCPClientToolExecutor] = None,
+        schemas: Union[dict[str, ToolSchema], list[ToolSchema], list[dict[str, str]]] = None,
+        mcp_client: Optional[MCPClientProtocol] = None,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
 
-        self.tool_schemas = tool_schemas
-        self.chat_output = chat_output
+        self._schemas = self._validate_schemas(schemas)
         self.mcp_client = mcp_client
 
-        self._langchain_tools: dict[str, ToolSchema] = dict()
-        self._mcp_tools: dict[str, Union[BaseTool, StructuredTool]] = dict()
-
         if self.llm_engine:
-            self.bind_schemas(self._merge_tools())
+            schemas = list(self.schemas.values()) + list(self.mcp_tools_as_langchain_tools.values())
+            self._merge_tools()
+            self.bind_schemas(schemas)
 
     @property
     def mcp_tools_as_langchain_tools(self):
@@ -103,9 +94,20 @@ class ToolCallGenerateChat(
     def langchain_tools(self):
         """Dict of {name: ``BaseTool`` | ``ToolSchema``}"""
         if not self._langchain_tools:
-            self._langchain_tools = self._validate_schemas()
+            self._langchain_tools = {
+                schema_name: schema
+                for schema_name, schema in self.schemas.items()
+                if schema.type == 'tool'
+            }
 
         return self._langchain_tools
+
+    @property
+    def schemas(self):
+        if not self._schemas:
+            self._schemas = self._validate_schemas(None)
+
+        return self._schemas
 
     def _merge_tools(self):
         common_names = set(self.langchain_tools.keys()).intersection(set(self.mcp_tools_as_langchain_tools.keys()))
@@ -121,18 +123,17 @@ class ToolCallGenerateChat(
         if name in self.mcp_tools_as_langchain_tools:
             return self.mcp_tools_as_langchain_tools[name]
 
-        raise ValueError(f"No tool name {name!r}") from None
+        raise ValueError(f"No tool name {name!r}.")
 
-    def _make_system_prompt(self, name: Optional[str] = 'asset_creation_strategy'):
+    def _get_system_prompt(self, name: Optional[str] = 'general_system_prompt'):
         try:
             system_message = SystemMessage(
-                content=self.mcp_client.run(
-                    self.mcp_client.get_prompt(name=name)
-                )
+                content=self.mcp_client.get_prompt(name)
             )
 
             return system_message
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error getting system prompt: {str(e)}")
             return None
 
     @override
@@ -144,7 +145,7 @@ class ToolCallGenerateChat(
         stop: Optional[list[str]] = None
     ) -> Union[AIMessage, ParsedTollCallMessage, ToolMessage]:
         """"""
-        system_message = self._make_system_prompt(None)
+        system_message = self._get_system_prompt()
         if system_message:
             input = [
                 system_message,
@@ -195,12 +196,11 @@ class ToolCallGenerateChat(
 
     def bind_schemas(self, schemas: list[ToolSchema]):
         if schemas:
-            logger.info(f"The {self.name!r} has access to {len(schemas)} schemas "
-                        f"({len(self.tool_schemas)} langchain tools, "
-                        f"{len(self.mcp_client.tools)} mcp tools, "
-                        f"{1 if self.chat_output else 0} outputs).")
+            logger.info(f"The {self.name!r} has access to {len(schemas)} schemas: "
+                        f"({len(self.schemas)} (langchain), "
+                        f"{len(self.mcp_client.tools)} (mcp)).")
         tool_choice = None
-        if len(schemas) == 1 and issubclass(schemas[0], BaseOutput):
+        if len(schemas) == 1 and schemas[0].type == 'chat_output':
             tool_choice = True
 
         self.chat_model = self.llm_engine.bind_tools(   # type: ignore
@@ -209,14 +209,31 @@ class ToolCallGenerateChat(
             tool_choice=tool_choice
         )
 
-    def _validate_schemas(self) -> dict[str, ToolSchema]:
-        """Validate output schemas to chat model"""
-        self.tool_schemas = self._convert_to_list(seq=self.tool_schemas)
-        chat_output = self._convert_to_list(seq=self.chat_output)
-        # get all schemas, do matter output schema and tool schema
-        # let model know schemas
-        schemas = self.fetch_schemas(self.tool_schemas + chat_output)
-        schemas = list(filter(lambda x: x, schemas))
+    @overload
+    def _validate_schemas(self, schemas) -> dict[str, ToolSchema]: ...
+
+    def _validate_schemas(
+        self,
+        schemas: Union[
+            dict[str, ToolSchema],
+            list[ToolSchema],
+            list[dict[str, str]]
+        ] = None
+    ) -> dict[str, ToolSchema]:
+        schemas = schemas or self._schemas
+        if not schemas:
+            return dict()
+
+        if isinstance(schemas, dict):
+            # Likely is {name: ToolSchema}
+            schema_objs = schemas
+        elif isinstance(schemas, list):
+            schema_objs = self.fetch_schemas(schemas)
+        else:
+            logger.error(f"Expect {type[list]!r} or {type[dict]!r}, but got {type(schemas)!r}")
+            schema_objs = []
+
+        schemas = list(filter(lambda x: x, schema_objs))
 
         return {
             schema.name: schema
@@ -231,21 +248,30 @@ class ToolCallGenerateChat(
 
     @staticmethod
     def fetch_schema(schema: Union[dict, ToolSchema]) -> Union[None, SchemaLike]:
-        if not isinstance(schema, MappingLike):
-            return schema
+        try:
+            if not isinstance(schema, MappingLike):
+                raise NotImplemented(f"Now we don't support pre-defined schema ({type(schema)!r})"
+                                     f". Only creating from dict. So treat as None")
+                schema_obj = schema
+                # TODO: solve this
+                schema_obj.type = schema.__getattribute__('type')
+            else:
+                schema_obj = fetch_registered(metadata=schema)
+                schema_obj.type = schema['type']
 
-        schema_obj = fetch_registered(metadata=schema)
-        # force schema's name and object's name are similar
-        schema_obj.name = schema['name']
+            try:
+                schema_obj.name = schema_obj.name
+            except AttributeError:
+                schema_obj.name = schema_obj.__name__
+        except NotImplemented as e:
+            logger.critical(str(e))
+            return None
 
         return schema_obj
 
 
 @RegisterChat(module=__name__, name='tool_call_execute_chat')
-class ToolCallExecuteChat(
-    ToolCallGenerateChat,
-    Generic[StateT, ContextT, OutputT, ToolSchema]
-):
+class ToolCallExecuteChat(ToolCallGenerateChat):
     """The Chat class can execute tool, but not persistent."""
 
     def __init_subclass__(cls):
@@ -267,24 +293,30 @@ class ToolCallExecuteChat(
         """
         try:
             tool = self.get_tool(name=tool_call['name'])
+            if self._is_mcp_tool_call(tool_call):
+                logger.info(f"Call mcp tool {tool.name!r}")
+                # ToolMessage
+                return self.mcp_client.run_langchain_tool(tool=tool, tool_call=tool_call)
+
+            if self._is_langchain_tool_call(tool_call):
+                logger.info(f"Call langchain tool {tool.name!r}")
+                # ToolMessage
+                return tool.invoke(input=tool_call)
+            # ParsedTollCallMessage
+            return super()._internal_call_tool(tool_call=tool_call)
         except ValueError as e:
-            raise e
+            logger.info("%s %s", e, 'Return as tool call.')
+            # ParsedTollCallMessage
+            return super()._internal_call_tool(tool_call=tool_call)
 
-        if self._is_mcp_tool(tool_call):
-            logger.info("Call mcp tool")
-            # ToolMessage
-            return self.mcp_client.run_langchain_tool(tool=tool, tool_call=tool_call)
-
-        if self._is_langchain_tool(tool_call):
-            logger.info("Call langchain tool")
-            # ToolMessage
-            return tool.invoke(input=tool_call)
-
-        # ParsedTollCallMessage
-        return super()._internal_call_tool(tool_call=tool_call)
-
-    def _is_mcp_tool(self, tool_call: ToolCall):
+    def _is_mcp_tool_call(self, tool_call: ToolCall):
         return tool_call['name'] in self.mcp_tools_as_langchain_tools
 
-    def _is_langchain_tool(self, tool_call: ToolCall):
+    def _is_langchain_tool_call(self, tool_call: ToolCall):
         return tool_call['name'] in self.langchain_tools
+
+    def _is_structured_output(self, tool_call: ToolCall):
+        if self._is_mcp_tool_call(tool_call) or self._is_langchain_tool_call(tool_call):
+            return False
+
+        return self.schemas[tool_call['name']].type == "chat_output"
