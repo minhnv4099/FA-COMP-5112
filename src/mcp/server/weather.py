@@ -5,14 +5,28 @@
 import httpx
 import logging
 
-from typing import Any
-from mcp.server import FastMCP
+from typing import Any, Literal, AsyncIterator, Dict
+from mcp.server.fastmcp.server import FastMCP, Context
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
+    """Life spand for the server"""
+    # Setting something here
+    try:
+        yield {}
+    finally:
+        global mcp_server
+        logger.info(f"MCP Server {mcp_server.name} shut down.")
+
+
 mcp_server = FastMCP(
     name="Weather",
-    instructions="The MCP server define tools get weather information"
+    instructions="The MCP server define tools get weather information",
+    lifespan=server_lifespan
 )
 
 # Constants
@@ -110,9 +124,20 @@ Forecast: {period['detailedForecast']}
     return "\n---\n".join(forecasts)
 
 
+@mcp_server.prompt()
+def general_system_prompt(ctx: Context):
+    return [
+        {
+            "role": "user",
+            "content": f"You are a very helpful assistance."
+        }
+    ]
+
+
 def main():
-    logger.info('MCP Server is running with transport \'stdio\'')
-    mcp_server.run(transport='stdio')
+    transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
+    mcp_server.run(transport=transport)
+    logger.info(f'MCP Server Weather is running on transport {transport!r}')
 
 
 if __name__ == '__main__':

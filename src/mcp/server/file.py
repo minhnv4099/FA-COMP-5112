@@ -3,23 +3,18 @@
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
 import os
-import sys
-sys.path.append(os.getcwd())
 import logging
 
+import subprocess
+from typing import Union, Literal, AsyncIterator, Dict, Any
 from pathlib import Path
-from typing import Any, Union
+from pydantic import BaseModel
 from mcp.server import FastMCP
 from mcp.server.fastmcp.server import Context
 from mcp.types import Icon
-from src.utils.file import execute_file, write_script
+from contextlib import asynccontextmanager
 
-logger = logging.getLogger(__name__)
-
-mcp_server = FastMCP(
-    name="Filesystem",
-    instructions="The MCP server define tools in filesystem running locally"
-)
+logger = logging.getLogger("FilesystemMCPServer")
 
 ICONS = [
     Icon(src='https://cdn-icons-png.flaticon.com/512/2455/2455132.png'),
@@ -27,64 +22,80 @@ ICONS = [
 ]
 
 
-# Tools
-@mcp_server.tool(
-    name='execute_python_file',
-    title='Python file Executor',
-    description='Use to execute a Python file',
-    structured_output=True,
-    icons=ICONS,
-    annotations=None
+class File(BaseModel):
+    file: str | Path
+    mode: str
+
+
+@asynccontextmanager
+async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
+    """Life spand for the server"""
+    # Setting something here
+    try:
+        yield {}
+    finally:
+        global mcp_server
+        logger.info(f"MCP Server {mcp_server.name} shut down.")
+
+
+mcp_server = FastMCP(
+    name="Filesystem",
+    instructions="The MCP server define tools in filesystem running locally",
+    lifespan=server_lifespan
 )
-def execute_python_file(context: Context, file_path: Union[str, Path]) -> Any:
-    """Execute a Python file
+
+@mcp_server.tool()
+def execute_python_file(ctx: Context, file_path: str) -> dict | str:
+    """Execute a Python file.
 
     Args:
-        file_path (str): Path to file, relative or absolute
+        file_path (str): Path to file, relative or absolute.
 
     Returns:
         Dictionary of stdout, stderr, code
     """
-    if not os.path.isfile(file_path):
-        raise ValueError(f"Non-exist file path '{file_path}'")
+    try:
+        with subprocess.Popen(
+            args=['python', file_path],
+            shell=False,
+            restore_signals=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        ) as process:
+            stdout, stderr = process.communicate()
+            result = {"error": stderr, 'stdout': stdout, 'returncode': process.returncode}
 
-    result = execute_file(file_path)
+            process.terminate()
+            process.kill()
 
-    return result
+            logger.info(f"Execute {file_path!r} successfully. {result}")
+            return result
+    except Exception as e:
+        logger.error(f"Error {file_path!r} is not exist.")
+        return f"Error executing {file_path!r}: {str(e)}"
 
 
-@mcp_server.tool(
-    name='write_to_file',
-    title='File Writer',
-    description='Use to write content to a file',
-    structured_output=True,
-    icons=ICONS,
-    annotations=None
-)
-def write_file(content: str, file_path: Union[str, Path]) -> str:
+@mcp_server.tool()
+def write_file(ctx: Context, content: str, file_path: str) -> str:
     """Write the content to the file
 
     Args:
-        content (str): Content want to write
+        content (str): Content to write
         file_path (str): Path to file, relative or absolute
-
-    Returns:
-        File path
     """
-    write_script(content, file_path)
+    try:
+        Path(file_path).write_text(content)
+        logger.info(f"Write content to {file_path!r} successfully.")
+        return f"Write content to {file_path!r} successfully."
+    except Exception as e:
+        logger.error(f"Error writing to {file_path!r}: {str(e)}")
+        return f"Error writing to {file_path!r}: {str(e)}"
 
-    return file_path
 
-
-@mcp_server.tool(
-    name='read_from_file',
-    title='File Reader',
-    description='Use to read content of a file',
-    structured_output=True,
-    icons=ICONS,
-    annotations=None
-)
-async def read_file(context: Context, file_path: Union[str, Path]) -> str | bytes:
+@mcp_server.tool()
+async def read_file(ctx: Context, file_path: File) -> str | bytes:
     """Read content in a file
 
     Args:
@@ -94,20 +105,15 @@ async def read_file(context: Context, file_path: Union[str, Path]) -> str | byte
         Content in file
     """
     try:
-        return Path(file_path).read_text()
-    except FileNotFoundError as e:
-        return str(e)
+        logger.info(f"Read file {file_path!r} successfully.")
+        return Path(file_path.file).read_text()
+    except Exception as e:
+        logger.error(f"Error reading {file_path!r}: {str(e)}")
+        return f"Error reading {file_path!r}: {str(e)}"
 
 
-@mcp_server.tool(
-    name='count_lines',
-    title='Line Counter',
-    description='Use to count lines of a file',
-    structured_output=True,
-    icons=ICONS,
-    annotations=None
-)
-def count_lines_in_file(file_path: Union[str, Path]) -> int | str:
+@mcp_server.tool()
+def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
     """Count lines in file
 
     Args:
@@ -118,20 +124,15 @@ def count_lines_in_file(file_path: Union[str, Path]) -> int | str:
     """
     try:
         with open(file_path, 'r') as f:
+            logger.info(f"Count lines in {file_path!r} successfully.")
             return len(f.readlines())
-    except FileNotFoundError as e:
-        return str(e)
+    except Exception as e:
+        logger.info(f"Error counting lines in {file_path!r}. {str(e)}")
+        return f"Error counting lines in {file_path!r}. {str(e)}"
 
 
-@mcp_server.tool(
-    name='count_words',
-    title='Word Counter',
-    description='Use to count words of a file',
-    structured_output=True,
-    icons=ICONS,
-    annotations=None
-)
-def count_words_in_file(file_path: Union[str, Path]) -> int | str:
+@mcp_server.tool()
+def count_words_in_file(ctx: Context, file_path: str) -> int | str:
     """Count words in file
 
     Args:
@@ -142,20 +143,15 @@ def count_words_in_file(file_path: Union[str, Path]) -> int | str:
     """
     try:
         with open(file_path, 'r') as f:
+            logger.info(f"Count words in {file_path!r} successfully.")
             return len(f.read().split(' '))
-    except FileNotFoundError as e:
-        return str(e)
+    except Exception as e:
+        logger.error(f"Error counting words in {file_path!r}. {str(e)}")
+        return f"Error counting words in {file_path!r}. {str(e)}"
 
 
-@mcp_server.tool(
-    name='list_dir',
-    title='List out the Dir',
-    description='Use to list items in a directory',
-    structured_output=True,
-    icons=ICONS,
-    annotations=None
-)
-def list_dir(dir: Union[str, Path]) -> list[str]:
+@mcp_server.tool()
+def list_dir(ctx: Context, dir: str) -> str:
     """List items in a directory
 
     Args:
@@ -164,44 +160,38 @@ def list_dir(dir: Union[str, Path]) -> list[str]:
     Returns:
          List of items in the dir
     """
-    import os
-    if not os.path.isdir(dir):
-        return []
-    return os.listdir(dir)
+    try:
+        logger.info(f"Items in {dir!r}: {os.listdir(dir)}")
+        return f"Items in {dir!r}: {os.listdir(dir)}"
+    except Exception as e:
+        logger.error(f"Error listing items in {dir!r}: {str(e)}")
+        return f"Error listing items in {dir!r}: {str(e)}"
 
 
-# Resources
-@mcp_server.resource(
-    uri='project://{file}',
-    name='read_requirements',
-    title="Requirements Read",
-    description='Use to read requirements file',
-    icons=ICONS,
-)
-def get_content(file: Union[str, Path]) -> Union[str, bytes]:
-    with open(file, 'r') as f:
-        return f.read()
+@mcp_server.resource(uri='project://{file}')
+def get_content(ctx: Context, file: str) -> Union[str, bytes]:
+    try:
+        logger.info(f"Get resource {file!r} successfully.")
+        return Path(file).read_text()
+    except Exception as e:
+        logger.error(f"Error reading {file!r}: {str(e)}")
+        return f"Error reading {file!r}: {str(e)}"
 
 
-# Prompts
-@mcp_server.prompt(
-    name='read_file',
-    title='Read File',
-    description='Instruction to read a file',
-    icons=ICONS
-)
-def read_file(file: Union[str, Path]):
+@mcp_server.prompt()
+def general_system_prompt(ctx: Context):
     return [
         {
             "role": "user",
-            "content": f"Help me to read the file: {file}"
+            "content": f"You are a very helpful assistance."
         }
     ]
 
 
 def main():
-    logger.info('MCP Server is running with transport \'stdio\'')
-    mcp_server.run(transport='stdio')
+    transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
+    mcp_server.run(transport=transport)
+    logger.info(f'MCP Server Filesystem is running on transport {transport!r}')
 
 
 if __name__ == '__main__':
