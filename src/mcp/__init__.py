@@ -2,4 +2,5 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from .client import MCPClientToolExecutor
+from .client import SingleServerMCPClient, MultiServerMCPClient, MCPClientProtocol
+
