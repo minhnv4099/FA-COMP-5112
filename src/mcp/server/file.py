@@ -190,8 +190,8 @@ def general_system_prompt(ctx: Context):
 
 def main():
     transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
-    mcp_server.run(transport=transport)
     logger.info(f'MCP Server Filesystem is running on transport {transport!r}')
+    mcp_server.run(transport=transport)
 
 
 if __name__ == '__main__':
