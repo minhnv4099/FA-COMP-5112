@@ -1,8 +1,7 @@
 [project]
-name = "fa-comp-5112"
+name = "langrework"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = "==3.10.*"
+requires-python = ">=3.10"
 dependencies = [
     #    "bpy==3.6.0",
     "aiofiles==24.1.0",
