@@ -6,8 +6,8 @@ from __future__ import print_function
 
 import logging
 import base64
-import os.path
 import re
+import warnings
 
 from typing import AsyncIterator, Dict, Any, Optional, Literal
 
@@ -25,7 +25,16 @@ from googleapiclient.discovery import build
 
 from mcp.server.fastmcp.server import FastMCP, Context
 
-logging.basicConfig(level=logging.INFO)
+from .telemetry_decorator import telemetry_tool, telemetry_prompt, telemetry_resource
+from .telemetry import record_startup, record_shutdown
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s][%(levelname)s][%(name)s][%(funcName)s] - %(message)s #%(lineno)d'
+)
 logger = logging.getLogger("GmailServiceMCPServer")
 
 SCOPES = [
@@ -52,20 +61,22 @@ SCOPES = [
 CREDENTIAL_FILE = Path("/Users/minhnguyen/Main/Study/Major/Projects/Python/langrework/data/crendentials/minhnv14099_credential.json")
 TOKEN_FILE = CREDENTIAL_FILE.with_name(CREDENTIAL_FILE.name.rstrip('.json') + "_token.json")
 
-POPABLE_FIELDS = ()
+POPABLE_FIELDS = tuple()
 
 
 @asynccontextmanager
 async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     # Setting something here
     try:
+        record_startup()
         yield {}
     finally:
         global _gmail_service, mcp_server
         if _gmail_service:
-            logger.info('Close Gmail service.')
             _gmail_service.close()
+            logger.info('Close Gmail service.')
             logger.info(f'MCP Server {mcp_server.name!r} shut down.')
+            record_shutdown()
 
 
 mcp_server = FastMCP(
@@ -84,19 +95,19 @@ def get_service():
     else:
         creds = None
 
-        if os.path.exists(TOKEN_FILE):
-            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+        if TOKEN_FILE.exists():
+            creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
 
             if creds.expired and creds.refresh_token:
                 try:
                     creds.refresh(Request())
                 except Exception as e:
-                    logger.error(f"Error refreshing token: {str(e)}")
+                    logger.error(f"Error refreshing token: {e}")
                     creds = None
 
         if not creds or not creds.valid:
             try:
-                flow = InstalledAppFlow.from_client_secrets_file(CREDENTIAL_FILE, SCOPES)
+                flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIAL_FILE), SCOPES)
                 creds = flow.run_local_server(
                     port=0,
                     prompt="consent",
@@ -105,46 +116,15 @@ def get_service():
                 # Save new token
                 TOKEN_FILE.write_text(creds.to_json())
             except Exception as e:
-                logger.error(f"Error verifying permission: {str(e)}")
+                logger.error(f"Error verifying permission: {e}")
         # --- Build Gmail API service ---
         try:
             _gmail_service = build("gmail", "v1", credentials=creds)
         except Exception as e:
-            logger.error(f"Error building service: {str(e)}")
+            logger.error(f"Error building service: {e}")
             _gmail_service = None
 
     return _gmail_service
-
-
-@mcp_server.tool()
-async def send_email(ctx: Context, to: str, subject: str, message_text: str) -> str:
-    """Send an email message to a person
-
-    Args:
-        to: Email address of recipient.
-        subject: Subject of the message.
-        message_text: Content of the message.
-
-    Returns:
-        Result.
-    """
-    try:
-        service = get_service()
-
-        message = MIMEText(message_text)
-        message["to"] = to
-        message["subject"] = subject
-
-        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        create_message = {"raw": encoded_message}
-
-        send_message = service.users().messages().send(userId="me", body=create_message).execute()
-
-        logger.info(f"Sent a message to {to!r} successfully. ID: {send_message['id']!r}")
-        return f"Sent a message to {to!r} successfully. ID: {send_message['id']!r}"
-    except Exception as e:
-        logging.error(f"Error sending message: {str(e)}")
-        return f"Error sending message: {str(e)}"
 
 
 def _get_messages(max_results: Optional[int] = None, query: Optional[str] = None) -> list[dict]:
@@ -176,13 +156,18 @@ def _get_messages(max_results: Optional[int] = None, query: Optional[str] = None
 
         return messages
     except Exception as e:
-        logger.error(f"Error getting messages: {str(e)}")
+        logger.error(f"Error getting messages: {e}")
         raise e from None
 
 
-def get_full_info(msg_id: str):
-    """
-    Get all info: headers, subject, sender, labels, snippet, body
+def get_full_info(msg_id: str) -> Dict[str, str]:
+    """Get all info: date, subject, sender, labels, snippet, body.
+
+    Args:
+        msg_id: Id of message.
+
+    Returns:
+        Dictionary of values.
     """
     try:
         service = get_service()
@@ -220,14 +205,11 @@ def get_full_info(msg_id: str):
 
             return str(dt_local)
 
-        send_time = get_header("Date")  # ví dụ: "Wed, 07 Feb 2024 10:20:33 +0700"
+        send_time = get_header("Date")  # "Wed, 07 Feb 2024 10:20:33 +0700"
         send_time = process_datetime(send_time)
 
-        # Labels
         labels = msg.get('labelIds', [])
-        # Snippet
         snippet = msg.get('snippet', '')
-        # Trạng thái read/unread
         is_unread = 'UNREAD' in labels
 
         # Body: decode base64
@@ -255,11 +237,44 @@ def get_full_info(msg_id: str):
             "is_unread": is_unread
         }
     except Exception as e:
-        logger.error(f"Error getting message {msg_id!r}: {str(e)}")
+        logger.error(f"Error getting message {msg_id!r}: {e}")
         return dict()
 
 
 @mcp_server.tool()
+@telemetry_tool("send_email")
+async def send_email(ctx: Context, to: str, subject: str, message_text: str) -> str:
+    """Send an email message to a person
+
+    Args:
+        to: Email address of recipient.
+        subject: Subject of the message.
+        message_text: Content of the message.
+
+    Returns:
+        Status of sending message.
+    """
+    try:
+        service = get_service()
+
+        message = MIMEText(message_text)
+        message["to"] = to
+        message["subject"] = subject
+
+        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        create_message = {"raw": encoded_message}
+
+        send_message = service.users().messages().send(userId="me", body=create_message).execute()
+
+        logger.info(f"Sent a message to {to!r} successfully. ID: {send_message['id']!r}")
+        return f"Sent a message to {to!r} successfully. ID: {send_message['id']!r}"
+    except Exception as e:
+        logging.error(f"Error sending message: {e}")
+        return f"Error sending message: {e}"
+
+
+@mcp_server.tool()
+@telemetry_tool("get_messages")
 def get_messages(ctx: Context, max_results: int = 1, query: Optional[str] = None) -> str:
     """Get messages with query acting as the filter
 
@@ -281,11 +296,12 @@ def get_messages(ctx: Context, max_results: int = 1, query: Optional[str] = None
         logger.info(f"Get messages successfully, {len(messages)} messages.")
         return f'Get messages successfully. \n{messages}'
     except Exception as e:
-        logger.error(f"Error getting messages: {str(e)}")
-        return f"Error getting messages: {str(e)}"
+        logger.error(f"Error getting messages: {e}")
+        return f"Error getting messages: {e}"
 
 
 @mcp_server.tool()
+@telemetry_tool("get_messages_by_date")
 def get_messages_by_date(ctx: Context, date_: Optional[str] = None) -> str:
     """Get messages on a specific date
 
@@ -317,18 +333,14 @@ def get_messages_by_date(ctx: Context, date_: Optional[str] = None) -> str:
         logger.info(f"Get messages on {date_!r} successfully.")
         return f"Successfully! Messages on {date_!r}: \n {messages}"
     except Exception as e:
-        logger.error(f"Error getting messages on {date_!r}: {str(e)}")
-        return f"Error getting messages on {date_!r}: {str(e)}"
+        logger.error(f"Error getting messages on {date_!r}: {e}")
+        return f"Error getting messages on {date_!r}: {e}"
 
 
 @mcp_server.prompt()
+@telemetry_prompt(f"{mcp_server.name}--general_system_prompt")
 def general_system_prompt(ctx: Context):
-    return [
-        {
-            "role": "user",
-            "content": f"You are a very helpful assistance."
-        }
-    ]
+    return "You are a very helpful assistance."
 
 
 def main():

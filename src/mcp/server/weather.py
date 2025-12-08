@@ -9,6 +9,9 @@ from typing import Any, Literal, AsyncIterator, Dict
 from mcp.server.fastmcp.server import FastMCP, Context
 from contextlib import asynccontextmanager
 
+from .telemetry_decorator import telemetry_tool, telemetry_prompt, telemetry_resource
+from .telemetry import record_startup, record_shutdown
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,10 +20,12 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     """Life spand for the server"""
     # Setting something here
     try:
+        record_startup()
         yield {}
     finally:
         global mcp_server
         logger.info(f"MCP Server {mcp_server.name} shut down.")
+        record_shutdown()
 
 
 mcp_server = FastMCP(
@@ -61,10 +66,8 @@ Instructions: {props.get('instruction', 'No specific instructions provided')}
 """
 
 
-@mcp_server.tool(
-    name='get_alerts',
-    structured_output=True,
-)
+@mcp_server.tool()
+@telemetry_tool("get_alerts")
 async def get_alerts(state: str) -> str:
     """Get weather alerts for a US state.
 
@@ -84,10 +87,8 @@ async def get_alerts(state: str) -> str:
     return "\n---\n".join(alerts)
 
 
-@mcp_server.tool(
-    name='get_forecast',
-    structured_output=True,
-)
+@mcp_server.tool()
+@telemetry_tool("get_forecast")
 async def get_forecast(latitude: float, longitude: float) -> str:
     """Get weather forecast for a location.
 
@@ -125,6 +126,7 @@ Forecast: {period['detailedForecast']}
 
 
 @mcp_server.prompt()
+@telemetry_prompt("general_system_prompt")
 def general_system_prompt(ctx: Context):
     return [
         {

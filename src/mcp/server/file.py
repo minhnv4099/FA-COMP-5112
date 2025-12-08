@@ -14,6 +14,9 @@ from mcp.server.fastmcp.server import Context
 from mcp.types import Icon
 from contextlib import asynccontextmanager
 
+from .telemetry_decorator import telemetry_tool, telemetry_prompt, telemetry_resource
+from .telemetry import record_startup, record_shutdown
+
 logger = logging.getLogger("FilesystemMCPServer")
 
 ICONS = [
@@ -23,7 +26,7 @@ ICONS = [
 
 
 class File(BaseModel):
-    file: str | Path
+    file: str
     mode: str
 
 
@@ -32,11 +35,12 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     """Life spand for the server"""
     # Setting something here
     try:
+        record_startup()
         yield {}
     finally:
         global mcp_server
         logger.info(f"MCP Server {mcp_server.name} shut down.")
-
+        record_shutdown()
 
 mcp_server = FastMCP(
     name="Filesystem",
@@ -44,7 +48,9 @@ mcp_server = FastMCP(
     lifespan=server_lifespan
 )
 
+
 @mcp_server.tool()
+@telemetry_tool("execute_python_file")
 def execute_python_file(ctx: Context, file_path: str) -> dict | str:
     """Execute a Python file.
 
@@ -52,7 +58,7 @@ def execute_python_file(ctx: Context, file_path: str) -> dict | str:
         file_path (str): Path to file, relative or absolute.
 
     Returns:
-        Dictionary of stdout, stderr, code
+        Dictionary of stdout, stderr, status code
     """
     try:
         with subprocess.Popen(
@@ -78,6 +84,7 @@ def execute_python_file(ctx: Context, file_path: str) -> dict | str:
 
 
 @mcp_server.tool()
+@telemetry_tool("write_file")
 def write_file(ctx: Context, content: str, file_path: str) -> str:
     """Write the content to the file
 
@@ -95,7 +102,8 @@ def write_file(ctx: Context, content: str, file_path: str) -> str:
 
 
 @mcp_server.tool()
-async def read_file(ctx: Context, file_path: File) -> str | bytes:
+@telemetry_tool("read_file")
+async def read_file(ctx: Context, file_path: str) -> str | bytes:
     """Read content in a file
 
     Args:
@@ -106,13 +114,14 @@ async def read_file(ctx: Context, file_path: File) -> str | bytes:
     """
     try:
         logger.info(f"Read file {file_path!r} successfully.")
-        return Path(file_path.file).read_text()
+        return Path(file_path).read_text()
     except Exception as e:
         logger.error(f"Error reading {file_path!r}: {str(e)}")
         return f"Error reading {file_path!r}: {str(e)}"
 
 
 @mcp_server.tool()
+@telemetry_tool("count_lines_in_file")
 def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
     """Count lines in file
 
@@ -132,6 +141,7 @@ def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
 
 
 @mcp_server.tool()
+@telemetry_tool("count_words_in_file")
 def count_words_in_file(ctx: Context, file_path: str) -> int | str:
     """Count words in file
 
@@ -151,6 +161,7 @@ def count_words_in_file(ctx: Context, file_path: str) -> int | str:
 
 
 @mcp_server.tool()
+@telemetry_tool("list_dir")
 def list_dir(ctx: Context, dir: str) -> str:
     """List items in a directory
 
@@ -169,6 +180,7 @@ def list_dir(ctx: Context, dir: str) -> str:
 
 
 @mcp_server.resource(uri='project://{file}')
+@telemetry_resource("project://{file}")
 def get_content(ctx: Context, file: str) -> Union[str, bytes]:
     try:
         logger.info(f"Get resource {file!r} successfully.")
@@ -179,13 +191,9 @@ def get_content(ctx: Context, file: str) -> Union[str, bytes]:
 
 
 @mcp_server.prompt()
+@telemetry_prompt(f"{mcp_server.name}--general_system_prompt")
 def general_system_prompt(ctx: Context):
-    return [
-        {
-            "role": "user",
-            "content": f"You are a very helpful assistance."
-        }
-    ]
+    return """You are a very helpful assistance."""
 
 
 def main():
