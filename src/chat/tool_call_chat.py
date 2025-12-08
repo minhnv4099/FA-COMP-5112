@@ -4,6 +4,7 @@
 #
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import (
     Union,
@@ -74,7 +75,7 @@ class ToolCallGenerateChat(
 
         if self.llm_engine:
             schemas = list(self.schemas.values()) + list(self.mcp_tools_as_langchain_tools.values())
-            self._merge_tools()
+            self._check_duplicate_tool_names()
             self.bind_schemas(schemas)
 
     @property
@@ -109,14 +110,14 @@ class ToolCallGenerateChat(
 
         return self._schemas
 
-    def _merge_tools(self):
+    def _check_duplicate_tool_names(self):
         common_names = set(self.langchain_tools.keys()).intersection(set(self.mcp_tools_as_langchain_tools.keys()))
         if common_names:
             logger.warning(f"Some name conflicts: {common_names}")
 
         return list(self.langchain_tools.values()) + list(self.mcp_tools_as_langchain_tools.values())
 
-    def get_tool(self, name: str):
+    def get_tool(self, name: str) -> Optional[Union[BaseTool, StructuredTool]]:
         if name in self.langchain_tools:
             return self.langchain_tools[name]
 
@@ -129,7 +130,7 @@ class ToolCallGenerateChat(
     def _dynamic_input(self, input: LanguageModelInput, name: Optional[str] = "general_system_prompt"):
         has_system_prompt = isinstance(input, list) and list(filter(lambda m: isinstance(m, SystemMessage), input))
         if not has_system_prompt:
-            system_message = self._get_system_prompt(name=name)
+            system_message = self._get_mcp_system_prompt(name=name)
             if system_message:
                 if isinstance(input, str):
                     hu_me = HumanMessage(content=input)
@@ -143,7 +144,7 @@ class ToolCallGenerateChat(
 
         return input
 
-    def _get_system_prompt(self, name: Optional[str] = 'general_system_prompt'):
+    def _get_mcp_system_prompt(self, name: Optional[str] = 'general_system_prompt'):
         try:
             system_message = SystemMessage(
                 content=self.mcp_client.get_prompt(name)
@@ -151,7 +152,7 @@ class ToolCallGenerateChat(
 
             return system_message
         except Exception as e:
-            logger.error(f"Error getting system prompt: {str(e)}")
+            logger.error(f"Error getting mcp system prompt {name!r}: {e}")
             return None
 
     @override
@@ -245,11 +246,10 @@ class ToolCallGenerateChat(
             logger.error(f"Expect {type[list]!r} or {type[dict]!r}, but got {type(schemas)!r}")
             schema_objs = []
 
-        schemas = list(filter(lambda x: x, schema_objs))
-
         return {
             schema.name: schema
             for schema in schemas
+            if schema
         }
 
     def fetch_schemas(self, schemas: list[Union[ToolSchema, dict]]) -> list[SchemaLike]:
@@ -264,22 +264,22 @@ class ToolCallGenerateChat(
             if not isinstance(schema, MappingLike):
                 raise NotImplemented(f"Now we don't support pre-defined schema ({type(schema)!r})"
                                      f". Only creating from dict. So treat as None")
-                schema_obj = schema
-                # TODO: solve this
-                schema_obj.type = schema.__getattribute__('type')
+                # schema_obj = schema
+                # # TODO: solve this
+                # schema_obj.type = schema.__getattribute__('type')
             else:
                 schema_obj = fetch_registered(metadata=schema)
                 schema_obj.type = schema['type']
 
-            try:
-                schema_obj.name = schema_obj.name
-            except AttributeError:
+            if inspect.isclass(schema_obj):
                 schema_obj.name = schema_obj.__name__
-        except NotImplemented as e:
-            logger.critical(str(e))
-            return None
+            else:
+                schema_obj.name = schema_obj.name
 
-        return schema_obj
+            return schema_obj
+        except NotImplemented as e:
+            logger.critical(e)
+            return None
 
 
 @RegisterChat(module=__name__, name='tool_call_execute_chat')
@@ -293,15 +293,23 @@ class ToolCallExecuteChat(ToolCallGenerateChat):
         super().__init__(*args, **kwargs)
 
         if self.langchain_tools or self.mcp_tools_as_langchain_tools:
-            logger.info(f"[TOOL] The {self.name!r} can execute "
+            logger.info(f"The {self.name!r} can execute "
                         f"{len(self.langchain_tools)!r} langchain tools and "
-                        f"{len(self.mcp_tools_as_langchain_tools)!r} mcp tools")
+                        f"{len(self.mcp_tools_as_langchain_tools)!r} mcp tools.")
 
     @add_note_docstring('Execute tool call')
     @override
     def _internal_call_tool(self, tool_call: ToolCall, **kwargs) -> Union[ToolMessage, ParsedTollCallMessage]:
         """Actually execute the tool call.
         If no tool (function) is found, treat it as tool schema -> parse output.
+
+        Args:
+            tool_call: Tool call get from AI message.
+
+        Returns:
+            Either:
+                - ``ToolMessage`` if actually execute the tool successfully.
+                - ``ParsedTollCallMessage`` (subclass of ``ToolMessage``) contain args as content if no tool or failed execute tool.
         """
         try:
             tool = self.get_tool(name=tool_call['name'])
