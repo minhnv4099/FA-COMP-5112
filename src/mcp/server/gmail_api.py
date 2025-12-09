@@ -25,8 +25,8 @@ from googleapiclient.discovery import build
 
 from mcp.server.fastmcp.server import FastMCP, Context
 
-from .telemetry_decorator import telemetry_tool, telemetry_prompt, telemetry_resource
-from .telemetry import record_startup, record_shutdown
+from src.telemetry.telemetry_decorator import telemetry_mcp_tool, telemetry_prompt, telemetry_resource
+from src.telemetry.telemetry import record_startup, record_shutdown
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -242,7 +242,7 @@ def get_full_info(msg_id: str) -> Dict[str, str]:
 
 
 @mcp_server.tool()
-@telemetry_tool("send_email")
+@telemetry_mcp_tool("send_email")
 async def send_email(ctx: Context, to: str, subject: str, message_text: str) -> str:
     """Send an email message to a person
 
@@ -274,7 +274,7 @@ async def send_email(ctx: Context, to: str, subject: str, message_text: str) -> 
 
 
 @mcp_server.tool()
-@telemetry_tool("get_messages")
+@telemetry_mcp_tool("get_messages")
 def get_messages(ctx: Context, max_results: int = 1, query: Optional[str] = None) -> str:
     """Get messages with query acting as the filter
 
@@ -301,7 +301,7 @@ def get_messages(ctx: Context, max_results: int = 1, query: Optional[str] = None
 
 
 @mcp_server.tool()
-@telemetry_tool("get_messages_by_date")
+@telemetry_mcp_tool("get_messages_by_date")
 def get_messages_by_date(ctx: Context, date_: Optional[str] = None) -> str:
     """Get messages on a specific date
 

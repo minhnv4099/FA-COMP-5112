@@ -14,8 +14,8 @@ from mcp.server.fastmcp.server import Context
 from mcp.types import Icon
 from contextlib import asynccontextmanager
 
-from .telemetry_decorator import telemetry_tool, telemetry_prompt, telemetry_resource
-from .telemetry import record_startup, record_shutdown
+from src.telemetry.telemetry_decorator import telemetry_mcp_tool, telemetry_prompt, telemetry_resource
+from src.telemetry.telemetry import record_startup, record_shutdown
 
 logger = logging.getLogger("FilesystemMCPServer")
 
@@ -50,7 +50,7 @@ mcp_server = FastMCP(
 
 
 @mcp_server.tool()
-@telemetry_tool("execute_python_file")
+@telemetry_mcp_tool("execute_python_file")
 def execute_python_file(ctx: Context, file_path: str) -> dict | str:
     """Execute a Python file.
 
@@ -84,7 +84,7 @@ def execute_python_file(ctx: Context, file_path: str) -> dict | str:
 
 
 @mcp_server.tool()
-@telemetry_tool("write_file")
+@telemetry_mcp_tool("write_file")
 def write_file(ctx: Context, content: str, file_path: str) -> str:
     """Write the content to the file
 
@@ -102,7 +102,7 @@ def write_file(ctx: Context, content: str, file_path: str) -> str:
 
 
 @mcp_server.tool()
-@telemetry_tool("read_file")
+@telemetry_mcp_tool("read_file")
 async def read_file(ctx: Context, file_path: str) -> str | bytes:
     """Read content in a file
 
@@ -121,7 +121,7 @@ async def read_file(ctx: Context, file_path: str) -> str | bytes:
 
 
 @mcp_server.tool()
-@telemetry_tool("count_lines_in_file")
+@telemetry_mcp_tool("count_lines_in_file")
 def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
     """Count lines in file
 
@@ -141,7 +141,7 @@ def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
 
 
 @mcp_server.tool()
-@telemetry_tool("count_words_in_file")
+@telemetry_mcp_tool("count_words_in_file")
 def count_words_in_file(ctx: Context, file_path: str) -> int | str:
     """Count words in file
 
@@ -161,7 +161,7 @@ def count_words_in_file(ctx: Context, file_path: str) -> int | str:
 
 
 @mcp_server.tool()
-@telemetry_tool("list_dir")
+@telemetry_mcp_tool("list_dir")
 def list_dir(ctx: Context, dir: str) -> str:
     """List items in a directory
 

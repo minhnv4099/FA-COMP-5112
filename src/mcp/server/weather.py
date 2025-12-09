@@ -9,8 +9,8 @@ from typing import Any, Literal, AsyncIterator, Dict
 from mcp.server.fastmcp.server import FastMCP, Context
 from contextlib import asynccontextmanager
 
-from .telemetry_decorator import telemetry_tool, telemetry_prompt, telemetry_resource
-from .telemetry import record_startup, record_shutdown
+from src.telemetry.telemetry_decorator import telemetry_mcp_tool, telemetry_prompt, telemetry_resource
+from src.telemetry.telemetry import record_startup, record_shutdown
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ Instructions: {props.get('instruction', 'No specific instructions provided')}
 
 
 @mcp_server.tool()
-@telemetry_tool("get_alerts")
+@telemetry_mcp_tool("get_alerts")
 async def get_alerts(state: str) -> str:
     """Get weather alerts for a US state.
 
@@ -88,7 +88,7 @@ async def get_alerts(state: str) -> str:
 
 
 @mcp_server.tool()
-@telemetry_tool("get_forecast")
+@telemetry_mcp_tool("get_forecast")
 async def get_forecast(latitude: float, longitude: float) -> str:
     """Get weather forecast for a location.
 
