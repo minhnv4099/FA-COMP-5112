@@ -26,6 +26,7 @@ from src.chat.base import BaseChat, LanguageModelInput
 from src.chat.mixin import ToolCallChatMixin
 from src.message.parsed_tool_call import ParsedTollCallMessage
 from src.utils.decorator import add_note_docstring
+from src.utils.exception import NotRegistered
 from src.mcp.client import MCPClientProtocol
 
 if TYPE_CHECKING:
@@ -145,6 +146,8 @@ class ToolCallGenerateChat(
         return input
 
     def _get_mcp_system_prompt(self, name: Optional[str] = 'general_system_prompt'):
+        if self.mcp_client is None:
+            return None
         try:
             system_message = SystemMessage(
                 content=self.mcp_client.get_prompt(name)
@@ -211,7 +214,7 @@ class ToolCallGenerateChat(
         if schemas:
             logger.info(f"The {self.name!r} has access to {len(schemas)} schemas: "
                         f"({len(self.schemas)} (langchain), "
-                        f"{len(self.mcp_client.tools)} (mcp)).")
+                        f"{len(self.mcp_tools_as_langchain_tools)} (mcp)).")
         tool_choice = None
         if len(schemas) == 1 and schemas[0].type == 'chat_output':
             tool_choice = True
@@ -248,7 +251,7 @@ class ToolCallGenerateChat(
 
         return {
             schema.name: schema
-            for schema in schemas
+            for schema in schema_objs
             if schema
         }
 
@@ -262,23 +265,26 @@ class ToolCallGenerateChat(
     def fetch_schema(schema: Union[dict, ToolSchema]) -> Union[None, SchemaLike]:
         try:
             if not isinstance(schema, MappingLike):
-                raise NotImplemented(f"Now we don't support pre-defined schema ({type(schema)!r})"
-                                     f". Only creating from dict. So treat as None")
+                logger.error(
+                    f"Now we don't support pre-defined schema ({type(schema)!r}). "
+                    f"Only creating from dict. So return None"
+                )
+                return None
                 # schema_obj = schema
                 # # TODO: solve this
                 # schema_obj.type = schema.__getattribute__('type')
-            else:
-                schema_obj = fetch_registered(metadata=schema)
-                schema_obj.type = schema['type']
 
-            if inspect.isclass(schema_obj):
-                schema_obj.name = schema_obj.__name__
-            else:
-                schema_obj.name = schema_obj.name
+            schema_obj = fetch_registered(metadata=schema)
+            schema_obj.type = schema['type']
+            if schema_obj:
+                if inspect.isclass(schema_obj):
+                    schema_obj.name = schema_obj.__name__
+                else:
+                    schema_obj.name = schema_obj.name
 
             return schema_obj
-        except NotImplemented as e:
-            logger.critical(e)
+        except Exception as e:
+            logger.error(f"Error fetching schema {schema!r}: {e}")
             return None
 
 

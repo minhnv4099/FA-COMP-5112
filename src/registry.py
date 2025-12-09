@@ -9,12 +9,16 @@ import importlib
 from collections import defaultdict
 from typing import Union, TYPE_CHECKING, Optional
 
-from src.typing import ClassLike, FunctionLike, MappingLike
-from src.utils.exception import NotFoundSchema, NotFoundTool
+from src.typing import ClassLike, MappingLike
+from src.utils.exception import (
+    NotRegistered,
+    NotFoundTool,
+    ToolCreationError
+)
 
 if TYPE_CHECKING:
     from src.types import RegisterFetchMetadata
-    from src.tool.base import BaseDefinedTool
+    from src.tools.base import BaseTool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,12 +35,12 @@ def load_class(metadata: RegisterFetchMetadata) -> ClassLike:
     _name = metadata['name'].lower()
 
     if _type not in REGISTRY:
-        raise KeyError(f"'{_type}' not found. Available types: {list(REGISTRY.keys())}")
+        raise NotRegistered(f"'{_type}' not found. Available types: {list(REGISTRY.keys())}")
 
     type_bucket = REGISTRY[_type]
 
     if _name not in type_bucket:
-        raise KeyError(f"'{_name}' not found in '{_type}'. Available names: {list(type_bucket.keys())}")
+        raise NotRegistered(f"'{_name}' not found in '{_type}'. Available {_type}s: {list(type_bucket.keys())}")
 
     info = type_bucket[_name]
 
@@ -46,19 +50,42 @@ def load_class(metadata: RegisterFetchMetadata) -> ClassLike:
     return cls
 
 
-def load_tool(name: str, **kwargs) -> BaseDefinedTool:
+def load_tool(name: str, **kwargs) -> BaseTool:
+    """Load registered tool.
+
+    Args:
+        name: Name of tool when registered.
+
+    Returns:
+        BaseTool: Tool.
+
+    Raises:
+        NotFoundTool: If not found tool.
+    """
     try:
         return load_class(metadata={'type': 'tool', 'name': name})(**kwargs)
-    except KeyError as e:
-        raise NotFoundTool
+    except ToolCreationError as e:
+        raise ToolCreationError(e)
+    except NotRegistered as e:
+        raise NotFoundTool(e) from None
 
 
-def fetch_registered(metadata: RegisterFetchMetadata) -> Union[None, ClassLike, FunctionLike]:
-    if metadata is None:
+def fetch_registered(metadata: Optional[RegisterFetchMetadata | dict]):
+    """Fetch registered objects by metadata.
+
+    Args:
+        metadata: Like mapping with keys `'type'` and `'name'`.`
+
+    Raises:
+        TypeError: If `metadata` is not mapping-like.
+        NotRegistered: If no found object.
+    """
+    if not metadata:
         return None
 
     if not isinstance(metadata, MappingLike):
-        raise ValueError(f"metadata must be like-dict, but got {type(metadata)!r}")
+        return None
+        # raise TypeError(f"metadata must be like-dict, but got {type(metadata)!r}")
 
     try:
         if metadata['type'] == 'tool':
@@ -66,8 +93,8 @@ def fetch_registered(metadata: RegisterFetchMetadata) -> Union[None, ClassLike, 
 
         return load_class(metadata)
 
-    except KeyError as e:
-        raise NotFoundSchema(e.args)
+    except (NotRegistered, NotFoundTool, ToolCreationError) as e:
+        raise e
 
 
 class Register:

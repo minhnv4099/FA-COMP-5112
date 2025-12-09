@@ -19,31 +19,36 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    model_name = "amazon/nova-2-lite-v1:free"
-    llm_engine = Builder.build(type='llm', model_name=model_name)
     mcp_client = MultiServerMCPClient(
         server_script_path=[
-            ("blender", "blender_mcp_entrypoint.py"),
-            ("gmail", "src/mcp/server/gmail_api.py"),
-            ("filesystem", "src/mcp/server/file.py"),
-            ("weather", "src/mcp/server/weather.py"),]
-    )
-
-    chat = Builder.build(
-        type='agent',
-        interface='react_agent',
-        llm_engine=llm_engine,
-        mcp_client=mcp_client,
-        schemas=[
-            {'type': 'tool', 'name': 'url_reader'},
-            {'type': 'chat_output', 'name': 'base'},
+            ("gmail", "src/mcp_server_entrypoint/gmail.py"),
+            ("filesystem", "src/mcp_server_entrypoint/filesystem.py"),
+            ("weather", "src/mcp_server_entrypoint/weather.py"),
+            # ("blender", "src/mcp_server_entrypoint/blender.py"),
         ]
     )
 
-    response = chat.invoke('Summarize the latest mesage I sent')
-    response.pretty_print()
-    # response = chat.invoke('Summarize what is my name')
-    # response.pretty_print()
+    model_name = "amazon/nova-2-lite-v1:free"
+    llm_engine = Builder.build(type='llm', model_name=model_name)
+    schemas = [
+        {'type': 'tool', 'name': 'url_reader'},
+        {'type': 'chat_output', 'name': 'base'},
+    ]
+
+    chat = Builder.build(
+        type='agent',
+        interface='react_stateful_agent',
+        llm_engine=llm_engine,
+        mcp_client=mcp_client,
+    )
+
+    while True:
+        message = input("Enter message: ").strip()
+        if message == 'q':
+            break
+        response = chat.invoke(message)
+        response.pretty_print()
+
     chat.print_conversation()
 
 

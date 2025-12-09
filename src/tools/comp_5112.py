@@ -4,40 +4,14 @@
 #
 import os
 from typing import Any, Optional, TYPE_CHECKING
-from typing_extensions import override
 
 from langchain_core.callbacks import CallbackManagerForToolRun
 from langchain_core.tools import tool
 
-from src.typing import ToolSchema
-from src.registry import RegisterTool
-from src.tool.rag import QueryRetriever
-from src.tool.schema import QueryRetrieveArgsSchema
 from src.utils import file
 
 if TYPE_CHECKING:
     ...
-
-
-class BlenderRetrieverArgsSchema(QueryRetrieveArgsSchema):
-    """Use this schema when need writing or saving Python script/code to a file"""
-
-
-@RegisterTool(module=__name__, name="blender_query_retriever")
-class BlenderQueryRetriever(QueryRetriever):
-
-    name: str = 'blender_query_retriever'
-
-    description: str = """Always use this tool to retrieve documents, supporting the query."""
-
-    args_schema: ToolSchema = QueryRetrieveArgsSchema
-
-    @override
-    def _run(self, query: str, *args: Any, **kwargs: Any) -> Any:
-        docs = self.retrieving_engine.invoke(query)
-        contents = [doc.page_content for doc in docs]
-
-        return f"\n\n{'='*100}\n".join(contents)
 
 
 @tool(parse_docstring=True)

@@ -59,7 +59,7 @@ class NotOverrideError(ValueError):
     ...
 
 
-class NotFoundSchema(KeyError):
+class NotRegistered(KeyError):
     ...
 
 
@@ -72,4 +72,8 @@ class NotFoundTool(Exception):
 
 
 class EmptyMessage(ValueError):
+    ...
+
+
+class ToolCreationError(Exception):
     ...

@@ -47,6 +47,9 @@ assets/**/*.py
 test_*.py
 tmp*.py
 
+__main__.py
+run.py
+
 notes.log
 # Self-created files
 
