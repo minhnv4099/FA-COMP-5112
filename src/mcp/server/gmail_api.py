@@ -243,7 +243,7 @@ def get_full_info(msg_id: str) -> Dict[str, str]:
 
 @mcp_server.tool()
 @telemetry_mcp_tool("send_email")
-async def send_email(ctx: Context, to: str, subject: str, message_text: str) -> str:
+def send_email(ctx: Context, to: str, subject: str, message_text: str, kwargs: dict = None):
     """Send an email message to a person
 
     Args:
@@ -260,6 +260,26 @@ async def send_email(ctx: Context, to: str, subject: str, message_text: str) -> 
         message = MIMEText(message_text)
         message["to"] = to
         message["subject"] = subject
+
+        # User confirm
+        if not kwargs or "user_confirm" not in kwargs:
+            asking_prompt = f"""Confirm sending message:
+    ---------------------------
+    To: {to}
+    Subject: {subject}
+    Content: 
+        {message_text}
+    ---------------------------
+Proceed this operation? (y/n): """
+
+            return {
+                "need_user_confirm": True,
+                "asking_prompt": asking_prompt
+            }
+
+        if kwargs and kwargs["user_confirm"] == 'n':
+            logger.info("User aborted this tool execution, pass over.")
+            return "User aborted this tool execution, pass over."
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
         create_message = {"raw": encoded_message}

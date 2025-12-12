@@ -85,15 +85,35 @@ def execute_python_file(ctx: Context, file_path: str) -> dict | str:
 
 @mcp_server.tool()
 @telemetry_mcp_tool("write_file")
-def write_file(ctx: Context, content: str, file_path: str) -> str:
+def write_file(ctx: Context, content: str, file_path: str, kwargs: dict = None) -> str | dict:
     """Write the content to the file
 
     Args:
         content (str): Content to write
         file_path (str): Path to file, relative or absolute
     """
+    file_to_write = Path(file_path)
     try:
-        Path(file_path).write_text(content)
+        # User confirm
+        if not kwargs or "user_confirm" not in kwargs:
+            asking_prompt = f"""Confirm writing:
+    -------------------------------------------
+    {content[:200]}     
+    -------------------------------------------
+to {str(file_to_write)!r} (existing?: {file_to_write.exists()})
+Proceed this operation? (y/n): """
+
+            return {
+                "need_user_confirm": True,
+                "asking_prompt": asking_prompt
+            }
+
+        if kwargs and kwargs["user_confirm"] == 'n':
+            logger.info("User aborted executing that tool, pass over, do not need to execute that tool.")
+            return "User aborted executing that tool, pass over, do not need to execute that tool."
+
+        file_to_write.write_text(content)
+
         logger.info(f"Write content to {file_path!r} successfully.")
         return f"Write content to {file_path!r} successfully."
     except Exception as e:
