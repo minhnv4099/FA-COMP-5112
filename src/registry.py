@@ -31,20 +31,33 @@ FUNCTION_REGISTRY = defaultdict(dict)
 
 
 def load_class(metadata: RegisterFetchMetadata) -> ClassLike:
+    """Load registered class.
+
+    Args:
+        metadata: With 2 keys:
+
+            - type: `chat`, `tool`, `agent`, ...
+            - name: Registered name.
+
+    Returns:
+        Class registered.
+    Raises:
+        NotRegistered: If no class match registry metadata.
+    """
     _type = metadata['type'].lower()
     _name = metadata['name'].lower()
 
     if _type not in REGISTRY:
-        raise NotRegistered(f"'{_type}' not found. Available types: {list(REGISTRY.keys())}")
+        raise NotRegistered(f"{_type!r} not found. Available types: {list(REGISTRY.keys())}")
 
     type_bucket = REGISTRY[_type]
 
     if _name not in type_bucket:
-        raise NotRegistered(f"'{_name}' not found in '{_type}'. Available {_type}s: {list(type_bucket.keys())}")
+        raise NotRegistered(f"{_name!r} not found in '{_type}'. Available {_type}s: {list(type_bucket.keys())}")
 
     info = type_bucket[_name]
 
-    module = importlib.import_module(name=info['path'])
+    module = importlib.import_module(name=info['module'])
     cls = getattr(module, info['symbol_name'])
 
     return cls
@@ -61,29 +74,32 @@ def load_tool(name: str, **kwargs) -> BaseTool:
 
     Raises:
         NotFoundTool: If not found tool.
+        ToolCreationError: If found tool, but creation error.
     """
     try:
         return load_class(metadata={'type': 'tool', 'name': name})(**kwargs)
     except ToolCreationError as e:
-        raise ToolCreationError(e)
+        raise e
     except NotRegistered as e:
-        raise NotFoundTool(e) from None
+        raise NotFoundTool(e)
 
 
-def fetch_registered(metadata: Optional[RegisterFetchMetadata | dict]):
-    """Fetch registered objects by metadata.
+def fetch_registered(metadata: RegisterFetchMetadata | dict):
+    """Fetch registered object by metadata.
 
     Args:
         metadata: Like mapping with keys `'type'` and `'name'`.`
 
+    Return:
+        - Object (of BaseTool) For `tool`.
+        - Class For others.
+        - None If metadata is None or not like-mapping.
     Raises:
-        TypeError: If `metadata` is not mapping-like.
-        NotRegistered: If no found object.
+        NotRegistered: If metadata does not match any registered object.
+        NotFoundTool: If no found object.
+        ToolCreationError: If found tool, but creation error.
     """
-    if not metadata:
-        return None
-
-    if not isinstance(metadata, MappingLike):
+    if not metadata or not isinstance(metadata, MappingLike):
         return None
         # raise TypeError(f"metadata must be like-dict, but got {type(metadata)!r}")
 
@@ -93,7 +109,7 @@ def fetch_registered(metadata: Optional[RegisterFetchMetadata | dict]):
 
         return load_class(metadata)
 
-    except (NotRegistered, NotFoundTool, ToolCreationError) as e:
+    except (NotRegistered, NotFoundTool, ToolCreationError, Exception) as e:
         raise e
 
 
@@ -137,7 +153,7 @@ class Register:
 
         name_to_class[self.name] = {
             'symbol_name': symbol.__name__,
-            'path': self.module,
+            'module': self.module,
             'symbol': symbol
         }
 

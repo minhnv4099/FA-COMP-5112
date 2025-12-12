@@ -77,3 +77,7 @@ class EmptyMessage(ValueError):
 
 class ToolCreationError(Exception):
     ...
+
+
+class InvalidInput(Exception):
+    ...

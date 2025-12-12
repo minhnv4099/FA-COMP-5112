@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Union, Literal
 from typing_extensions import TypeAlias
 from collections import defaultdict
 from src.graph.base import BaseGraph
-from src.registry import load_class
+from src.registry import fetch_registered
 
 if TYPE_CHECKING:
     from src.chat import BaseChat, StatefulChat, ToolCallGenerateChat
@@ -74,7 +74,7 @@ class Builder:
     ) -> Union[BaseAgent]:
         """"""
         logger.info(f"Create {agent_config['name']!r} from {agent_config['model_name']!r}")
-        agent_cls = load_class(metadata={'type': 'agent', 'name': agent_config['name']})
+        agent_cls = fetch_registered(metadata={'type': 'agent', 'name': agent_config['name']})
 
         return agent_cls(**agent_config)
 
@@ -82,9 +82,9 @@ class Builder:
     def build_chat(
         cls,
         chat_config: dict
-    ) -> BaseChat | StatefulChat:
+    ) -> BaseChat | StatefulChat | ToolCallGenerateChat:
         logger.info(f"Create {chat_config['name']!r} from {chat_config['model_name']!r}")
-        chat_cls = load_class(metadata={'type': 'chat', 'name': chat_config['name']})
+        chat_cls = fetch_registered(metadata={'type': 'chat', 'name': chat_config['name']})
 
         return chat_cls(**chat_config)
 
