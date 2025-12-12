@@ -45,13 +45,13 @@ class MCPClientProtocol(Protocol):
 
     @property
     @abstractmethod
-    def tools_dict(self): ...
+    def tools_dict(self) -> dict[str, Tool]: ...
 
     @property
     def tools(self) -> list[Tool]: ...
 
     @property
-    def tool_names(self): ...
+    def tool_names(self) -> list[str]: ...
 
     def get_mcp_tool(self, name: str) -> Tool: ...
 
@@ -65,13 +65,13 @@ class MCPClientProtocol(Protocol):
 
     @property
     @abstractmethod
-    def prompts_dict(self): ...
+    def prompts_dict(self) -> dict[str, Prompt]: ...
 
     @property
-    def prompts(self) -> list[Tool]: ...
+    def prompts(self) -> list[Prompt]: ...
 
     @property
-    def prompt_names(self): ...
+    def prompt_names(self) -> list[str]: ...
 
     def get_mcp_prompt(self, name: str) -> str: ...
 
@@ -79,13 +79,13 @@ class MCPClientProtocol(Protocol):
 
     @property
     @abstractmethod
-    def resources_dict(self): ...
+    def resources_dict(self) -> dict[str, Resource]: ...
 
     @property
-    def resources(self) -> list[Tool]: ...
+    def resources(self) -> list[Resource]: ...
 
     @property
-    def resource_names(self): ...
+    def resource_names(self) -> list[str]: ...
 
     def get_mcp_resource(self, name: str) -> str: ...
 
@@ -463,19 +463,23 @@ class MultiServerMCPClient(MCPClientMixin):
             if isinstance(tup, tuple):
                 if len(tup) == 2:
                     mcp_client = SingleServerMCPClient(server_script_path=tup[1], name=tup[0])
-                if len(tup) == 1:
+                else:  # len(tup) == 1:
                     mcp_client = SingleServerMCPClient(server_script_path=tup[0])
-            elif isinstance(tup, str):
+            else:  # isinstance(tup, str):
                 mcp_client = SingleServerMCPClient(server_script_path=tup)
 
             self.mcp_clients[mcp_client.name] = mcp_client
+
+        _ = self.tools_dict
+        _ = self.prompts_dict
+        _ = self.resources_dict
 
     @property
     def tools_dict(self):
         if not self._tools_dict:
             for client_name, client in self.mcp_clients.items():
                 for tool_name, tool in client.tools_dict.items():
-                    # prompt name exposed to llm
+                    # tool names exposed to llm
                     _name = client_name + self._separator_client_vs_comp_name + tool_name
                     tool.name = _name
                     self._tools_dict[_name] = tool
@@ -544,12 +548,12 @@ class MultiServerMCPClient(MCPClientMixin):
 
     @override
     def mcp_tool_to_langchain_tool(self, tool: Tool) -> Union[BaseTool, StructuredTool]:
-        """Convert mcp tool to langchain tool. Its name is combined as client name + tool name"""
-        # split exposed tool name to get client and original tool name
+        """Convert mcp tool to langchain tool. Its name is combined as client name and tool name."""
+        # split exposed tool name to get client and original tool names
         client_name, tool_name = tool.name.split(self._separator_client_vs_comp_name)
         client = self.mcp_clients[client_name]
 
-        # conver combine-name tool
+        # convert combine-name tool
         langchain_tool = client.mcp_tool_to_langchain_tool(tool)
 
         # Note: after getting langchain tool with combined name, MUST set mcp tool original name.
