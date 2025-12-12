@@ -33,52 +33,45 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ChatMixin(ABC, metaclass=ABCMeta):
-    """The Chat Mixin class acting as an LLM"""
+class TokenCountMixin:
+    """Mix-in class counting tokens: input, output, reasoning."""
 
-    @classmethod
-    def get_conversation(cls, messages: Sequence[BaseMessage]):
-        conversation = "🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶\n"
-        for m in messages:
-            conversation += m.pretty_repr(is_interactive_env())
-            conversation += '\n'
-        conversation += '🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 ' + '\n'
-
-        return conversation.strip()
-
-    @classmethod
-    def log_conversation(cls, _logger, conversation: Sequence[BaseMessage] | str):
-        if not isinstance(conversation, str):
-            conversation = cls.get_conversation(conversation)
-
-        _logger.info(
-            f"🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 CONVERSATION 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵\n{conversation}")
-        _logger.info(f"🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 ")
+    num_input_tokens: int = 0
+    """Input tokens count until now."""
+    num_output_tokens: int = 0
+    """Output tokens count until now."""
+    total_tokens: int = 0
+    """Total token count. Sum of `input_tokens` + `output_tokens`."""
+    reasoning_tokens: int = 0
+    """Reasoning tokens count until now."""
 
     def _count_tokens(self, ai_message: AIMessage):
-        """Accumulate input and output tokens"""
+        """Accumulate input, output and reasoning tokens
+
+         Args:
+            ai_message: The message returned by AI.
+        """
         usage_metadata = ai_message.usage_metadata
+
         self.num_input_tokens += usage_metadata['input_tokens']
         self.num_output_tokens += usage_metadata['output_tokens']
+        self.total_tokens += usage_metadata['total_tokens']
+        self.reasoning_tokens += usage_metadata['output_token_details']['reasoning']
 
     def _used_token_prep(self):
-        """Get a string describing input and output token usage"""
-        return f'Input tokens: {self.num_input_tokens}, Output tokens: {self.num_output_tokens}'
-
-    def _finish_session(self, _logger, conversation=None):
-        if conversation:
-            self.log_conversation(_logger, conversation)
-        _logger.info(self._used_token_prep())
-        _logger.info(self.closing_symbols)
-        self.num_input_tokens = 0
-        self.num_output_tokens = 0
+        """Get a string describing input, output and reasoning token usage."""
+        return (
+            f'Input tokens: {self.num_input_tokens}. '
+            f'Output tokens: {self.num_output_tokens}. '
+            f'Reasoning tokens: {self.reasoning_tokens}.'
+        )
 
 
 class ToolCallChatMixin(ABC, metaclass=ABCMeta):
     """The Tool Call Chat Mixin with functionalities to generate tool call and execute tool"""
 
     def get_pretty_prep(self, content: Any):
-        """Try to get pretty content"""
+        """Try to get pretty content."""
         try:
             if isinstance(content, str):
                 text = dumps(loads(
@@ -87,12 +80,12 @@ class ToolCallChatMixin(ABC, metaclass=ABCMeta):
             else:
                 text = dumps(content, indent=4)
             return text
-        except (JSONDecodeError, TypeError) as e:
+        except (JSONDecodeError, Exception) as e:
             return content
 
     @classmethod
     def _parse_json_content(cls, text: str):
-        """Parse the structured output from text content"""
+        """Parse the structured output from text content."""
         import re
 
         text = text.strip()
@@ -102,7 +95,7 @@ class ToolCallChatMixin(ABC, metaclass=ABCMeta):
         if match:
             try:
                 return loads(match.group())
-            except ValueError:
+            except Exception:
                 pass
 
         return text
@@ -175,24 +168,70 @@ class StatefulChatMixin(ABC, metaclass=ABCMeta):
     ) -> list[BaseMessage]:
         return self.get_state(config).values.get('messages', [])
 
+
+class ConversationLogMixin(ABC, metaclass=ABCMeta):
+    """Mix-in class log conversation typically used to stateful chatbot."""
+
+    def format_conversation(self, messages: Sequence[BaseMessage]) -> str:
+        conversation = self.opening_symbols
+        conversation += "\n"
+        conversation += "🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶"
+        conversation += "\n"
+
+        for m in messages:
+            conversation += m.pretty_repr(is_interactive_env())
+            conversation += '\n'
+
+        conversation += '🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶 🔶' + '\n'
+        conversation += '\n'
+        conversation += self._used_token_prep()
+        conversation += '\n'
+        conversation += self.closing_symbols
+        return conversation
+
     def print_conversation(
         self,
+        conversation: Optional[Sequence[BaseMessage] | str] = None,
         config: Optional[Union[RunnableConfig, dict]] = None
     ):
-        print(self.opening_symbols)
-        print('>>>>>>>> CONVERSATION <<<<<<<<')
-        print()
-        for m in self.get_messages(config):
-            m.pretty_print()
+        if conversation is None or not isinstance(conversation, str):
+            conversation = self.format_conversation(self.get_messages(config))
 
-        print()
-        print(self._used_token_prep())
-        print(self.closing_symbols)
+        print(conversation)
+
+    def log_conversation(
+        self,
+        conversation: Optional[Sequence[BaseMessage] | str] = None,
+        _logger: Optional[logging.Logger] = logger,
+        config: Optional[Union[RunnableConfig, dict]] = None
+    ):
+        """Log conversation, can be used to save it to a file."""
+        if conversation is None or not isinstance(conversation, str):
+            conversation = self.format_conversation(self.get_messages(config))
+
+        _logger.info(
+            f"🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 CONVERSATION 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵"
+            f"\n"
+            f"{conversation}"
+        )
+        _logger.info(
+            f"🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵 🔵"
+        )
 
 
-class NonStatefulChatMixin(ABC, metaclass=ABCMeta):
-    """The non-stateful Chat Mixin class only retrain everything in a call turn."""
+class ReactAgentMixin:
+    opening_symbols: str
+    """Opening signals of an agent call"""
+    closing_symbols: str
+    """Closing signals of an agent call"""
 
-    @add_note_docstring("No need set system prompt")
-    def _set_system_behavior(self, **kwargs):
-        ...
+    # use as middleware
+    # self.opening_symbols = "-" * 60 + ' ' + self.name.title() + ' ' + "-" * 60
+    # self.closing_symbols = "*" * (122 + len(self.name))
+    def _finish_session(self, _logger, conversation=None):
+        if conversation:
+            self.log_conversation(_logger, conversation)
+        _logger.info(self._used_token_prep())
+        _logger.info(self.closing_symbols)
+        self.num_input_tokens = 0
+        self.num_output_tokens = 0

@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 from typing import (
     Union,
-    Sequence,
     Optional,
     TYPE_CHECKING,
     Generic,
@@ -32,7 +31,7 @@ from langgraph.runtime import Runtime
 
 from src.registry import RegisterChat
 from src.typing import ContextT, StateT, OutputT, ToolSchema
-from src.chat.mixin import GraphBasedMixin, StatefulChatMixin
+from src.chat.mixin import GraphBasedMixin, StatefulChatMixin, ConversationLogMixin
 from src.chat.base import BaseChat, LanguageModelInput
 from src.chat.tool_call_chat import ToolCallGenerateChat, ToolCallExecuteChat
 from src.types import BaseState, BaseContext
@@ -51,6 +50,7 @@ logger = logging.getLogger(__name__)
 class StatefulChat(
     StatefulChatMixin,
     GraphBasedMixin,
+    ConversationLogMixin,
     BaseChat,
     Generic[StateT, ContextT, OutputT],
     bypass_override=True, show_5112=False
@@ -74,7 +74,7 @@ class StatefulChat(
     context_schema: type[ContextT]
     """Context schema"""
 
-    output_schema: Union[dict, OutputT]
+    output_schema: type[OutputT]
     """The output state for the internal graph"""
 
     def __init_subclass__(cls, **kwargs):
@@ -108,10 +108,13 @@ class StatefulChat(
                 )
             )
 
+        self.opening_symbols = "-" * 60 + ' ' + self.name.title() + ' ' + "-" * 60
+        self.closing_symbols = "*" * (122 + len(self.name))
+
     @override
     def _build_internal_graph(self):
         # TODO: consider using self-defined graph "src/base/graph.py"
-        self.graph_builder = StateGraph[StateT, ContextT, ..., OutputT](
+        self.graph_builder: StateGraph[StateT, ContextT, ..., OutputT] = StateGraph(
             state_schema=self.state_schema,
             context_schema=self.context_schema,
             input_schema=self.state_schema,
