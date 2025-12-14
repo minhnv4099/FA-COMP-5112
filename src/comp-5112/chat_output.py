@@ -8,10 +8,7 @@ from pydantic import Field
 
 from src.registry import RegisterChatOutputSchema
 from src.utils.decorator import add_note_docstring
-from src.utils import scan_module
 from src.types import BaseOutput
-
-__all__ = scan_module(globals())
 
 
 @add_note_docstring(docs="Used for only 'COMP-5112' project")
