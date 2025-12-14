@@ -29,24 +29,25 @@ MANIFEST
 # Self-created folders
 .DS_Store
 renders/
-models/dat
+templates/
+configs/
 tests/
 api_keys/
-outputs/2025**
+outputs/
 data/
 .gradio/
+vectorstores/
+
 chatbot_tmp/
 hydra_main.py
 app_local.py
 app.py
-vectorstores/
 !.gitkeep
 assets/blender_script/**/*.py
 assets/rendered_images/**/*.png
 assets/**/*.py
 test_*.py
 tmp*.py
-
 __main__.py
 run.py
 
@@ -192,3 +193,4 @@ __marimo__/
 
 .env
 !sample_secret.env
+/templates/

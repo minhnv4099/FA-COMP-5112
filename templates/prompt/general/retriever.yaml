@@ -1,7 +1,0 @@
-system_template: |-
-  You are a Retrieval-Augmented AI Agent. Continue working if you dont have final answer.
-  Provide programming instructions. 
-
-human_template: |-
-  Answer the question:
-    - Query: {query}
