@@ -344,14 +344,17 @@ class ToolCallExecuteChat(ToolCallGenerateChat):
             # Only need if the tool message has field 'need_user_confirm'
             if json_content.get("need_user_confirm", False):
                 asking_prompt = json_content.get("asking_prompt", f"Confirm to proceed this tool execution [{tool_message.name!r}] (y/n): ")
-                tool_call['args']['kwargs'] = tool_call['args'].get("kwargs", dict())
-                tool_call['args']['kwargs']['user_confirm'] = input(asking_prompt)
+                tool_call['args']['aux_kwargs'] = tool_call['args'].get("aux_kwargs", dict())
+                tool_call['args']['aux_kwargs']['user_confirm'] = input(asking_prompt)
 
+                # recall tool with update tool_call
                 return self._internal_call_tool(tool_call)
-
-            return tool_message
         except json.JSONDecodeError:
-            return tool_message
+            pass
+
+        # pop kwargs to not let model know
+        tool_call['args'].pop("aux_kwargs", None)
+        return tool_message
 
     def _is_mcp_tool_call(self, tool_call: ToolCall):
         return tool_call['name'] in self.mcp_tools_as_langchain_tools
