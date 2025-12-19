@@ -12,11 +12,12 @@ import warnings
 from typing import AsyncIterator, Dict, Any, Optional, Literal
 
 from dateutil import tz
-from datetime import date, datetime
+from datetime import date
 from contextlib import asynccontextmanager
 from pathlib import Path
 from json import dumps
 from email.mime.text import MIMEText
+from email.utils import parsedate_to_datetime
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -27,6 +28,7 @@ from mcp.server.fastmcp.server import FastMCP, Context
 
 from src.telemetry.telemetry_decorator import telemetry_mcp_tool, telemetry_prompt, telemetry_resource
 from src.telemetry.telemetry import record_startup, record_shutdown
+from src.mcp.server.utils import require_human_confirm, NeedHumanConfirmException, HumanAbortedException
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -38,24 +40,10 @@ logging.basicConfig(
 logger = logging.getLogger("GmailServiceMCPServer")
 
 SCOPES = [
-    # Read-only
     "https://www.googleapis.com/auth/gmail.readonly",          # Chỉ đọc email
-    # "https://www.googleapis.com/auth/gmail.metadata",          # Chỉ đọc metadata (subject, sender, label)
-    # "https://www.googleapis.com/auth/gmail.labels",            # Xem và quản lý labels
-    #
-    # # Send / Compose
     "https://www.googleapis.com/auth/gmail.send",              # Gửi email
     "https://www.googleapis.com/auth/gmail.compose",           # Tạo và gửi email
-    #
-    # # Modify / Full access
     "https://www.googleapis.com/auth/gmail.modify",            # Gửi, đọc, xóa, thay đổi labels
-    # "https://mail.google.com/",                                 # Full access, toàn quyền trên mailbox
-    #
-    # # Additional
-    # "https://www.googleapis.com/auth/gmail.insert",            # Thêm email vào mailbox mà không trigger filters
-    # "https://www.googleapis.com/auth/gmail.messages.modify",   # Thêm/xóa label trên email
-    # "https://www.googleapis.com/auth/gmail.settings.basic",    # Quản lý cài đặt cơ bản (signature, vacation, forwarding)
-    # "https://www.googleapis.com/auth/gmail.settings.sharing"   # Quản lý sharing settings (delegates)
 ]
 
 CREDENTIAL_FILE = Path("/Users/minhnguyen/Main/Study/Major/Projects/Python/langrework/data/crendentials/minhnv14099_credential.json")
@@ -84,7 +72,7 @@ mcp_server = FastMCP(
     lifespan=server_lifespan
 )
 
-_gmail_service = None
+_gmail_service: Optional[None] = None
 
 
 def get_service():
@@ -197,13 +185,11 @@ def get_full_info(msg_id: str) -> Dict[str, str]:
         def process_datetime(datetime_str: str):
             # remove UTC from header time
             clean_date = re.sub(r"\(.*\)", '', datetime_str).strip()
-            dt_utc = datetime.strptime(clean_date, '%a, %d %b %Y %H:%M:%S %z')
-            # timezone of local location
-            local_tz = tz.tzlocal()
+            dt_utc = parsedate_to_datetime(clean_date)
             # convert to date in local
-            dt_local = dt_utc.astimezone(local_tz)
+            dt_utc = dt_utc.astimezone(tz.tzlocal())
 
-            return str(dt_local)
+            return dt_utc.strftime("%a, %d %b %Y %H:%M:%S")
 
         send_time = get_header("Date")  # "Wed, 07 Feb 2024 10:20:33 +0700"
         send_time = process_datetime(send_time)
@@ -243,51 +229,48 @@ def get_full_info(msg_id: str) -> Dict[str, str]:
 
 @mcp_server.tool()
 @telemetry_mcp_tool("send_email")
-def send_email(ctx: Context, to: str, subject: str, message_text: str, kwargs: dict = None):
-    """Send an email message to a person
+def send_email(ctx: Context, to: str, subject: str, message_text: str, aux_kwargs: Optional[dict[str, Any]] = None):
+    """Send an email message to a person. If human didn't provide recipient address, let try find it by yourself by using contacts.
 
     Args:
         to: Email address of recipient.
+            If human didn't provide, let try find it by yourself by using contacts.
         subject: Subject of the message.
         message_text: Content of the message.
 
     Returns:
         Status of sending message.
     """
-    try:
-        service = get_service()
-
-        message = MIMEText(message_text)
-        message["to"] = to
-        message["subject"] = subject
-
-        # User confirm
-        if not kwargs or "user_confirm" not in kwargs:
-            asking_prompt = f"""Confirm sending message:
+    asking_prompt = f"""
+Confirm sending message:
     ---------------------------
     To: {to}
     Subject: {subject}
     Content: 
         {message_text}
     ---------------------------
-Proceed this operation? (y/n): """
+Proceed this operation? (y/n): """.lstrip()
 
-            return {
-                "need_user_confirm": True,
-                "asking_prompt": asking_prompt
-            }
+    try:
+        require_human_confirm(asking_prompt=asking_prompt, kwargs=aux_kwargs)
 
-        if kwargs and kwargs["user_confirm"] == 'n':
-            logger.info("User aborted this tool execution, pass over.")
-            return "User aborted this tool execution, pass over."
+        service = get_service()
+
+        message = MIMEText(message_text)
+        message["to"] = to
+        message["subject"] = subject
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
         create_message = {"raw": encoded_message}
 
         send_message = service.users().messages().send(userId="me", body=create_message).execute()
 
-        logger.info(f"Sent a message to {to!r} successfully. ID: {send_message['id']!r}")
-        return f"Sent a message to {to!r} successfully. ID: {send_message['id']!r}"
+        logger.info(f"Successfully! Sent a message to {to!r}. ID: {send_message['id']!r}")
+        return f"Successfully! Sent a message to {to!r}. ID: {send_message['id']!r}"
+    except NeedHumanConfirmException as e:
+        return e.kwargs
+    except HumanAbortedException as e:
+        return str(e)
     except Exception as e:
         logging.error(f"Error sending message: {e}")
         return f"Error sending message: {e}"
@@ -295,12 +278,12 @@ Proceed this operation? (y/n): """
 
 @mcp_server.tool()
 @telemetry_mcp_tool("get_messages")
-def get_messages(ctx: Context, max_results: int = 1, query: Optional[str] = None) -> str:
+def get_messages(ctx: Context, max_results: int = 10, query: Optional[str] = None) -> str:
     """Get messages with query acting as the filter
 
     Args:
+        max_results: Maximum number of messages to get. None if no mention.
         query: Query to filter message. It likes when type search on Web.
-        max_results: Maximum number of messages to get. -1 if no mention
 
     Returns:
         Content of messages.
@@ -313,7 +296,7 @@ def get_messages(ctx: Context, max_results: int = 1, query: Optional[str] = None
             messages_str += '\n\n'
             messages_str += '-'*100 + '\n\n'
 
-        logger.info(f"Get messages successfully, {len(messages)} messages.")
+        logger.info(f"Get {len(messages)} messages successfully with query: {query!r}.")
         return f'Get messages successfully. \n{messages}'
     except Exception as e:
         logger.error(f"Error getting messages: {e}")
@@ -326,7 +309,7 @@ def get_messages_by_date(ctx: Context, date_: Optional[str] = None) -> str:
     """Get messages on a specific date
 
     Args:
-        date_: Date info with form 'yyyy-mm-dd'. If the date is today, set it ``None``
+        date_: Date information in form 'yyyy-mm-dd'. If the date is today, set it ``None``
 
     Returns:
         Content of messages.
@@ -338,6 +321,7 @@ def get_messages_by_date(ctx: Context, date_: Optional[str] = None) -> str:
     else:
         yyyy, mm, dd = date_.split(r"-")
 
+    # TODO: use +/- delta time
     next_day = f"{yyyy}-{mm}-{int(dd)+1:02d}"
     query = f"after:{yyyy}/{mm}/{dd} before:{next_day.replace('-', '/')}"
 
@@ -365,7 +349,7 @@ def general_system_prompt(ctx: Context):
 
 def main():
     transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
-    logger.info(f'MCP Server Gmail API is running on transport {transport!r}')
+    logger.info(f'MCP Server Gmail API is running on transport {transport!r}.')
     mcp_server.run(transport=transport)
 
 

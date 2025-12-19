@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 
 from src.telemetry.telemetry_decorator import telemetry_mcp_tool, telemetry_prompt, telemetry_resource
 from src.telemetry.telemetry import record_startup, record_shutdown
+from src.mcp.server.utils import require_human_confirm, NeedHumanConfirmException, HumanAbortedException
 
 logger = logging.getLogger("FilesystemMCPServer")
 
@@ -51,16 +52,27 @@ mcp_server = FastMCP(
 
 @mcp_server.tool()
 @telemetry_mcp_tool("execute_python_file")
-def execute_python_file(ctx: Context, file_path: str) -> dict | str:
+def execute_python_file(ctx: Context, file_path: str, aux_kwargs: dict[str, Any] = None) -> dict | str:
     """Execute a Python file.
 
     Args:
-        file_path (str): Path to file, relative or absolute.
+        file_path (str): Path to the file, relative or absolute.
 
     Returns:
         Dictionary of stdout, stderr, status code
     """
+    file_to_write = Path(file_path)
+
+    asking_prompt = f"""
+Confirm executing file:
+    -------------------------------------------
+    {file_path} (existing?: {file_to_write.exists()}).
+    -------------------------------------------
+Proceed this operation? (y/n): """.lstrip()
+
     try:
+        require_human_confirm(asking_prompt=asking_prompt, kwargs=aux_kwargs)
+
         with subprocess.Popen(
             args=['python', file_path],
             shell=False,
@@ -73,49 +85,55 @@ def execute_python_file(ctx: Context, file_path: str) -> dict | str:
             stdout, stderr = process.communicate()
             result = {"error": stderr, 'stdout': stdout, 'returncode': process.returncode}
 
-            process.terminate()
-            process.kill()
-
-            logger.info(f"Execute {file_path!r} successfully. {result}")
-            return result
+        logger.info(f"Successfully! Executed {file_path!r}. Result: {result}")
+        return f"Successfully! Executed {file_path!r}. Result: {result}"
+    except NeedHumanConfirmException as e:
+        return e.kwargs
+    except HumanAbortedException as e:
+        return str(e)
     except Exception as e:
-        logger.error(f"Error {file_path!r} is not exist.")
+        logger.error(f"Error executing {file_path!r}: {str(e)}")
         return f"Error executing {file_path!r}: {str(e)}"
 
 
 @mcp_server.tool()
 @telemetry_mcp_tool("write_file")
-def write_file(ctx: Context, content: str, file_path: str, kwargs: dict = None) -> str | dict:
+def write_file(ctx: Context, content: str, file_path: str, aux_kwargs: dict[str, Any] = None) -> str | dict:
     """Write the content to the file
 
     Args:
         content (str): Content to write
         file_path (str): Path to file, relative or absolute
     """
+    # User confirm
     file_to_write = Path(file_path)
-    try:
-        # User confirm
-        if not kwargs or "user_confirm" not in kwargs:
-            asking_prompt = f"""Confirm writing:
+
+    asking_prompt = f"""
+Confirm writing:
     -------------------------------------------
     {content[:200]}     
     -------------------------------------------
 to {str(file_to_write)!r} (existing?: {file_to_write.exists()})
-Proceed this operation? (y/n): """
+Proceed this operation? (y/n): """.lstrip()
 
-            return {
-                "need_user_confirm": True,
-                "asking_prompt": asking_prompt
-            }
-
-        if kwargs and kwargs["user_confirm"] == 'n':
-            logger.info("User aborted executing that tool, pass over, do not need to execute that tool.")
-            return "User aborted executing that tool, pass over, do not need to execute that tool."
+    try:
+        require_human_confirm(asking_prompt=asking_prompt, kwargs=aux_kwargs)
 
         file_to_write.write_text(content)
 
-        logger.info(f"Write content to {file_path!r} successfully.")
-        return f"Write content to {file_path!r} successfully."
+        msg = (
+            f"Successfully! Wrote content:"
+            f"\n\n"
+            f"%s"
+            f"\n\n"
+            f"to {file_path!r}."
+        )
+        logger.info(msg % content[:200])
+        return msg % content
+    except NeedHumanConfirmException as e:
+        return e.kwargs
+    except HumanAbortedException as e:
+        return str(e)
     except Exception as e:
         logger.error(f"Error writing to {file_path!r}: {str(e)}")
         return f"Error writing to {file_path!r}: {str(e)}"
@@ -133,8 +151,10 @@ async def read_file(ctx: Context, file_path: str) -> str | bytes:
         Content in file
     """
     try:
-        logger.info(f"Read file {file_path!r} successfully.")
-        return Path(file_path).read_text()
+        content = Path(file_path).read_text()
+
+        logger.info(f"Successfully! Read file {file_path!r}.")
+        return f"Successfully! Content in {file_path!r}:\n{'-'*50}\n{content}"
     except Exception as e:
         logger.error(f"Error reading {file_path!r}: {str(e)}")
         return f"Error reading {file_path!r}: {str(e)}"
@@ -153,8 +173,10 @@ def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
     """
     try:
         with open(file_path, 'r') as f:
-            logger.info(f"Count lines in {file_path!r} successfully.")
-            return len(f.readlines())
+            n_lines = len(f.readlines())
+
+        logger.info(f"Successfully! Count lines in {file_path!r}: {n_lines}")
+        return n_lines
     except Exception as e:
         logger.info(f"Error counting lines in {file_path!r}. {str(e)}")
         return f"Error counting lines in {file_path!r}. {str(e)}"
@@ -173,8 +195,10 @@ def count_words_in_file(ctx: Context, file_path: str) -> int | str:
     """
     try:
         with open(file_path, 'r') as f:
-            logger.info(f"Count words in {file_path!r} successfully.")
-            return len(f.read().split(' '))
+            n_words = len(f.read().split(' '))
+
+        logger.info(f"Successfully! Count words in {file_path!r}.")
+        return n_words
     except Exception as e:
         logger.error(f"Error counting words in {file_path!r}. {str(e)}")
         return f"Error counting words in {file_path!r}. {str(e)}"
@@ -192,8 +216,10 @@ def list_dir(ctx: Context, dir: str) -> str:
          List of items in the dir
     """
     try:
-        logger.info(f"Items in {dir!r}: {os.listdir(dir)}")
-        return f"Items in {dir!r}: {os.listdir(dir)}"
+        items = os.listdir(dir)
+
+        logger.info(f"{dir!r} has {len(items)} items.")
+        return f"Successfully! Items in {dir!r}: {items}"
     except Exception as e:
         logger.error(f"Error listing items in {dir!r}: {str(e)}")
         return f"Error listing items in {dir!r}: {str(e)}"
@@ -203,8 +229,10 @@ def list_dir(ctx: Context, dir: str) -> str:
 @telemetry_resource("project://{file}")
 def get_content(ctx: Context, file: str) -> Union[str, bytes]:
     try:
-        logger.info(f"Get resource {file!r} successfully.")
-        return Path(file).read_text()
+        content = Path(file).read_text()
+
+        logger.info(f"Successfully! Got resource {file!r}.")
+        return content
     except Exception as e:
         logger.error(f"Error reading {file!r}: {str(e)}")
         return f"Error reading {file!r}: {str(e)}"

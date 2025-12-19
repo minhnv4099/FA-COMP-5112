@@ -55,17 +55,18 @@ class DirMakeRun(NeedReferenceDirMixin, BaseTool):
     ) -> str:
         _dir_path = Path(self.reference_dir) / dir_path
 
-        asking_prompt = f"""Confirm making directory at {dir_path!r} (existing?: {_dir_path.exists()}).
-Proceed this operation? (y/n): """
+        asking_prompt = f"""
+Confirm making directory at {dir_path!r} (existing?: {_dir_path.exists()}).
+Proceed this operation? (y/n): """.lstrip()
 
         try:
             if ask_human:
                 user_confirm = input(asking_prompt).lower().strip()
-                if user_confirm == "y":
-                    _dir_path.mkdir(parents=True, exist_ok=True)
-                else:
+                if user_confirm != "y":
                     logger.info("User aborted writing, pass over.")
                     return "User aborted writing, pass over."
+
+                _dir_path.mkdir(parents=True, exist_ok=True)
             else:
                 _dir_path.mkdir(parents=True, exist_ok=True)
 

@@ -70,20 +70,21 @@ Proceed this operation? (y/n): """
         try:
             if ask_human:
                 user_confirm = input(asking_prompt).lower().strip()
-                if user_confirm == "y":
-                    file_to_write.write_text(content)
-                else:
-                    logger.info("User aborted writing, pass over.")
-                    return "User aborted writing, pass over."
+                if user_confirm != "y":
+                    logger.info("User aborted executing, pass over.")
+                    return "User aborted executing, pass over."
+
+                file_to_write.write_text(content)
             else:
                 file_to_write.write_text(content)
 
             # logger.info(f"Successfully! Wrote content: \n\n{display_content}\nto {str(file_path)!r}")
-            return f"""Successfully! Wrote content: 
+            return f"""
+Successfully! Wrote content: 
     -------------------------------------------
     {display_content}
     -------------------------------------------
-to {str(file_path)!r}."""
+to {str(file_path)!r}.""".lstrip()
         except Exception as e:
             logger.error(f"Error writing to {file_path!r}: {e}")
             return f"Error writing to {file_path!r}: {e}"

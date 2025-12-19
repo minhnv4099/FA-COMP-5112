@@ -78,6 +78,13 @@ class ShellInput(BaseModel, NeedAskHumanMixin):
         if commands and isinstance(commands, str):
             values["commands"] = commands.strip().split(" ")
 
+        else:
+            argus = []
+            for argu in commands:
+                argus.extend(argu.split(" "))
+
+            values["commands"] = argus
+
         values["is_safe"] = True
         for cmd in PROHIBITED_CMDS:
             if cmd in values["commands"]:
@@ -116,8 +123,8 @@ class ShellTool(BaseTool):
                 if len(result['error']) == 0:
                     result['error'] = "❇️ ❇️ ❇️ ❇️ ❇️ 👍 👍 👍 👍 👍 NO ERROR 👍 👍 👍 👍 👍 ❇️ ❇️ ❇️ ❇️ ❇️"
 
-                logger.info(f"Execute {commands!r} successfully.")
-                return f"Execute {commands!r} successfully. Result: {result}"
+                logger.info(f"Successfully! Executed {commands!r}.")
+                return f"Successfully! Executed {commands!r}. Result: {result}"
         except Exception as e:
             logger.error(f"Error executing {commands!r}: {e}")
             return f"Error executing {commands!r}: {e}"
@@ -131,16 +138,20 @@ class ShellTool(BaseTool):
         ask_human: bool = True
     ) -> str:
         """Run commands."""
-        asking_prompt = f"""Confirm to run commands: 
+        asking_prompt = f"""
+Confirm running: 
     -------------------------
     {commands}
     -------------------------
-Proceed this? (y/n): """
+Proceed this? (y/n): """.lstrip()
+
         if ask_human:
             user_confirm = input(asking_prompt).lower().strip()
             if user_confirm != 'y':
-                return "User aborted writing, pass over."
+                logger.info("User aborted executing, pass over.")
+                return "User aborted executing, pass over."
+
         if is_safe:
             return self._execute_command(commands)
         else:
-            return f"Cannot execute {commands} because it is unsafe command!!!"
+            return f"Cannot execute {commands!r} because it seems be unsafe command!!!"

@@ -54,9 +54,7 @@ class FileReadRun(NeedReferenceDirMixin, BaseTool):
 
         try:
             content = file_to_read.read_text(encoding=encoding)
-            return f"""Successfully! Content in {file_path!r}:
-    ------------------------------ 
-    {content}"""
+            return f"Successfully! Content in {file_path!r}:\n{'-'*50}\n{content}"
         except FileNotFoundError as e:
             logger.error(f"Error: File not found at {file_to_read!r}")
             return f"Error: File not found at {file_to_read!r}"
