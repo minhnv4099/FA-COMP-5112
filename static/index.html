@@ -1,0 +1,121 @@
+<!--
+  ~
+  ~ Copyright (c) 2026
+  ~ Minh NGUYEN <vnguyen9@lakeheadu.ca>
+  ~
+  -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Advanced Chatbot UI - Sequential Logic</title>
+
+<style>
+  :root {
+    --bg-main: #0f172a; --bg-header: #111827; --bg-msg-bot: #1f2937;
+    --bg-user: #2563eb; --text-main: #e5e7eb; --text-muted: #9ca3af;
+    --accent-green: #22c55e; --border: #374151; --accent-indigo: #6366f1;
+  }
+
+  body {
+    margin: 0; font-family: 'Segoe UI', sans-serif;
+    background: var(--bg-main); color: var(--text-main);
+    display: flex; justify-content: center; height: 100vh;
+  }
+
+  .container { width: 100%; max-width: 1000px; display: flex; flex-direction: column; height: 100vh; }
+
+  /* HEADER */
+  .header {
+    padding: 12px 20px; background: var(--bg-header);
+    border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 15px;
+  }
+
+  select, .btn-toggle {
+    padding: 8px 12px; background: #0b1220; color: white;
+    border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+
+  /* MESSAGES AREA */
+  .messages { flex: 1; padding: 20px; overflow-y: auto; scroll-behavior: smooth; }
+  .message-row { display: flex; margin-bottom: 20px; flex-direction: column; }
+  .right { align-items: flex-end; }
+  .left { align-items: flex-start; }
+
+  .bubble {
+    padding: 12px 16px; border-radius: 12px; max-width: 85%;
+    line-height: 1.5; position: relative;
+  }
+
+  .user { background: var(--bg-user); color: white; }
+  .bot { background: var(--bg-msg-bot); border: 1px solid var(--border); width: 100%; box-sizing: border-box; }
+
+  /* DYNAMIC CONTENT BLOCKS */
+  .block-reasoning {
+    background: rgba(0, 0, 0, 0.2); border-left: 3px solid var(--accent-indigo);
+    margin-bottom: 12px; padding: 10px; border-radius: 4px;
+    font-size: 13px; color: var(--text-muted); font-style: italic; white-space: pre-wrap;
+  }
+
+  .block-tool {
+    font-family: 'Cascadia Code', monospace; font-size: 12px;
+    background: #000; padding: 10px; border-radius: 6px;
+    margin-bottom: 12px; border: 1px solid #334155;
+  }
+
+  .tool-call-info { color: #fbbf24; font-weight: bold; margin-bottom: 4px; }
+  .tool-args { color: #94a3b8; }
+  .tool-result { color: #34d399; margin-top: 8px; border-top: 1px solid #222; padding-top: 8px; }
+
+  .block-text { font-size: 16px; margin-bottom: 5px; }
+  .block-text p { margin: 8px 0; }
+
+  /* INPUT AREA */
+  .input-box {
+    display: flex; padding: 20px; gap: 10px;
+    border-top: 1px solid var(--border); background: var(--bg-header);
+  }
+
+  textarea {
+    flex: 1; padding: 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg-msg-bot); color: white; resize: none; height: 45px;
+    font-size: 16px;
+  }
+
+  .send-btn {
+    padding: 0 20px; border: none; border-radius: 8px;
+    background: var(--accent-green); color: #000; cursor: pointer; font-weight: bold;
+  }
+
+  .hidden { display: none !important; }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <select id="modelSelect">
+      <option value="local">Local Agent</option>
+      <option value="deepseek-R1">Deepseek-R1</option>
+      <option value="gpt-4o">GPT-4o</option>
+      <option value="gpt-4">GPT-4</option>
+    </select>
+    <button class="btn-toggle" onclick="toggleReasoning()">Toggle Reasoning</button>
+  </div>
+
+  <div id="messages" class="messages"></div>
+
+  <div class="input-box">
+    <textarea id="userInput" placeholder="Type message... (Enter to send)"></textarea>
+    <button class="send-btn" onclick="sendMessage()">Send</button>
+  </div>
+</div>
+
+<script src="/static/script.js"></script>
+</body>
+</html>
