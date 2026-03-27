@@ -8,15 +8,11 @@ import logging
 import subprocess
 from typing import Union, Literal, AsyncIterator, Dict, Any
 from pathlib import Path
-from pydantic import BaseModel
-from mcp.server import FastMCP
 from mcp.server.fastmcp.server import Context
 from mcp.types import Icon
 from contextlib import asynccontextmanager
-
-from src.telemetry.telemetry_decorator import telemetry_mcp_tool, telemetry_prompt, telemetry_resource
-from src.telemetry.telemetry import record_startup, record_shutdown
 from src.mcp.server.utils import require_human_confirm, NeedHumanConfirmException, HumanAbortedException
+from src.mcp.server.wrapper import AccessibleFastMCP
 
 logger = logging.getLogger("FilesystemMCPServer")
 
@@ -26,32 +22,34 @@ ICONS = [
 ]
 
 
-class File(BaseModel):
-    file: str
-    mode: str
-
-
 @asynccontextmanager
-async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
-    """Life spand for the server"""
+async def server_lifespan(server: AccessibleFastMCP) -> AsyncIterator[Dict[str, Any]]:
+    """Lifespan for the server"""
     # Setting something here
+    global mcp_server
     try:
-        record_startup()
+        logger.info(f"A new session connected to MCP Server {mcp_server.name!r}.")
         yield {}
     finally:
-        global mcp_server
-        logger.info(f"MCP Server {mcp_server.name} shut down.")
-        record_shutdown()
+        logger.info(f"A session disconnected MCP Server {mcp_server.name!r}")
 
-mcp_server = FastMCP(
+mcp_server = AccessibleFastMCP(
     name="Filesystem",
     instructions="The MCP server define tools in filesystem running locally",
     lifespan=server_lifespan
 )
 
+BASE_DIR = Path.cwd()
 
-@mcp_server.tool()
-@telemetry_mcp_tool("execute_python_file")
+
+def _resolve_path(file_path: str) -> Path:
+    """Ensure all paths stay within BASE_DIR."""
+    path = (BASE_DIR / file_path).resolve()
+    if not str(path).startswith(str(BASE_DIR)):
+        raise ValueError("Access outside base directory is not allowed.")
+    return path
+
+
 def execute_python_file(ctx: Context, file_path: str, aux_kwargs: dict[str, Any] = None) -> dict | str:
     """Execute a Python file.
 
@@ -96,8 +94,7 @@ Proceed this operation? (y/n): """.lstrip()
         return f"Error executing {file_path!r}: {str(e)}"
 
 
-@mcp_server.tool()
-@telemetry_mcp_tool("write_file")
+# @mcp_server.tool()
 def write_file(ctx: Context, content: str, file_path: str, aux_kwargs: dict[str, Any] = None) -> str | dict:
     """Write the content to the file
 
@@ -140,7 +137,6 @@ Proceed this operation? (y/n): """.lstrip()
 
 
 @mcp_server.tool()
-@telemetry_mcp_tool("read_file")
 async def read_file(ctx: Context, file_path: str) -> str | bytes:
     """Read content in a file
 
@@ -150,18 +146,21 @@ async def read_file(ctx: Context, file_path: str) -> str | bytes:
     Returns:
         Content in file
     """
-    try:
-        content = Path(file_path).read_text()
+    path = _resolve_path(file_path)
+    if not path.exists():
+        return f"File not found: {file_path}"
 
-        logger.info(f"Successfully! Read file {file_path!r}.")
+    if not path.is_file() and path.is_dir():
+        return f"{file_path!r} is a folder"
+
+    try:
+        content = path.read_text(encoding="utf-8")
         return f"Successfully! Content in {file_path!r}:\n{'-'*50}\n{content}"
     except Exception as e:
-        logger.error(f"Error reading {file_path!r}: {str(e)}")
         return f"Error reading {file_path!r}: {str(e)}"
 
 
 @mcp_server.tool()
-@telemetry_mcp_tool("count_lines_in_file")
 def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
     """Count lines in file
 
@@ -171,19 +170,23 @@ def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
     Returns:
         Number of lines
     """
+    path = _resolve_path(file_path)
+    if not path.exists():
+        return f"File not found: {file_path}"
+
+    if not path.is_file() and path.is_dir():
+        return f"{file_path!r} is a folder"
+
     try:
-        with open(file_path, 'r') as f:
+        with open(path, 'r') as f:
             n_lines = len(f.readlines())
 
-        logger.info(f"Successfully! Count lines in {file_path!r}: {n_lines}")
-        return n_lines
+        return f"Count lines in {file_path!r} is {n_lines}."
     except Exception as e:
-        logger.info(f"Error counting lines in {file_path!r}. {str(e)}")
         return f"Error counting lines in {file_path!r}. {str(e)}"
 
 
 @mcp_server.tool()
-@telemetry_mcp_tool("count_words_in_file")
 def count_words_in_file(ctx: Context, file_path: str) -> int | str:
     """Count words in file
 
@@ -193,19 +196,23 @@ def count_words_in_file(ctx: Context, file_path: str) -> int | str:
     Returns:
         Number of words (separated by space)
     """
+    path = _resolve_path(file_path)
+    if not path.exists():
+        return f"File not found: {file_path}"
+
+    if not path.is_file() and path.is_dir():
+        return f"{file_path!r} is a folder"
+
     try:
-        with open(file_path, 'r') as f:
+        with open(path, 'r') as f:
             n_words = len(f.read().split(' '))
 
-        logger.info(f"Successfully! Count words in {file_path!r}.")
-        return n_words
+        return f"Count words in {file_path!r} is {n_words}."
     except Exception as e:
-        logger.error(f"Error counting words in {file_path!r}. {str(e)}")
         return f"Error counting words in {file_path!r}. {str(e)}"
 
 
 @mcp_server.tool()
-@telemetry_mcp_tool("list_dir")
 def list_dir(ctx: Context, dir: str) -> str:
     """List items in a directory
 
@@ -215,39 +222,45 @@ def list_dir(ctx: Context, dir: str) -> str:
     Returns:
          List of items in the dir
     """
-    try:
-        items = os.listdir(dir)
+    path = _resolve_path(dir)
+    if not path.exists():
+        return f"Folder not found: {dir}"
 
-        logger.info(f"{dir!r} has {len(items)} items.")
-        return f"Successfully! Items in {dir!r}: {items}"
+    if path.is_file() and not path.is_dir():
+        return f"{dir!r} is a file"
+    try:
+        items = os.listdir(path)
+
+        return f"Items in {dir!r}: {items}"
     except Exception as e:
-        logger.error(f"Error listing items in {dir!r}: {str(e)}")
         return f"Error listing items in {dir!r}: {str(e)}"
 
 
 @mcp_server.resource(uri='project://{file}')
-@telemetry_resource("project://{file}")
 def get_content(ctx: Context, file: str) -> Union[str, bytes]:
-    try:
-        content = Path(file).read_text()
+    path = _resolve_path(file)
+    if not path.exists():
+        return f"File not found: {file}"
+    if not path.is_file():
+        return f"{file!r} is a folder"
 
-        logger.info(f"Successfully! Got resource {file!r}.")
+    try:
+        content = path.read_text(encoding='utf-8')
+
         return content
     except Exception as e:
-        logger.error(f"Error reading {file!r}: {str(e)}")
         return f"Error reading {file!r}: {str(e)}"
 
 
 @mcp_server.prompt()
-@telemetry_prompt(f"{mcp_server.name}--general_system_prompt")
 def general_system_prompt(ctx: Context):
     return """You are a very helpful assistance."""
 
 
 def main():
-    transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
-    logger.info(f'MCP Server Filesystem is running on transport {transport!r}')
-    mcp_server.run(transport=transport)
+    from src.mcp.manager import run_mcp_server
+    with run_mcp_server(mcp_server):
+        mcp_server.run(transport="sse")
 
 
 if __name__ == '__main__':

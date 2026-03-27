@@ -40,8 +40,6 @@ vectorstores/
 
 chatbot_tmp/
 hydra_main.py
-app_local.py
-app.py
 !.gitkeep
 assets/blender_script/**/*.py
 assets/rendered_images/**/*.png

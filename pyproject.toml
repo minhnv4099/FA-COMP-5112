@@ -61,16 +61,13 @@ dependencies = [
     "jiter==0.11.0",
     "jsonpatch==1.33",
     "jsonpointer==3.0.0",
-    "langchain==1.0.2",
+    "langchain>=1.2.12",
     "langchain-classic==1.0.0",
-    "langchain-community==1.0.0",
-    "langchain-core==1.0.1",
+    "langchain-core==1.2.13",
     "langchain-openai==1.0.1",
     "langchain-text-splitters==1.0.0",
-    "langgraph==1.0.1",
+    "langgraph>=1.1.2",
     "langgraph-checkpoint==3.0.0",
-    "langgraph-prebuilt==1.0.1",
-    "langgraph-sdk==0.2.9",
     "langsmith==0.4.34",
     "markdown-it-py==4.0.0",
     "markupsafe==3.0.3",
@@ -163,6 +160,8 @@ dependencies = [
     "langchain-huggingface>=1.0.0",
     "supabase>=2.25.0",
     "tomli>=2.3.0",
+    "langchain-openrouter==0.1.0",
+    "nest-asyncio>=1.6.0",
 ]
 
 

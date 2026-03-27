@@ -101,15 +101,15 @@ class BaseChat(TokenCountMixin):
 
     def __init__(
         self,
-        name: str = None,
-        metadata: dict = None,
+        name: Optional[str] = None,
+        metadata: Optional[dict] = None,
         use_model: bool = True,
-        model_name: str = None,
-        model_provider: str = None,
-        model_api_key: str = None,
+        model_name: Optional[str] = None,
+        model_provider: Optional[str] = None,
+        model_api_key: Optional[str] = None,
         chat_model:  Union[BaseChat, BaseChatModel, None] = None,
         llm_engine: Union[BaseChat, BaseChatModel, None] = None,
-        template_file: str = None,
+        template_file: Optional[str] = None,
         *args,
         **kwargs,
     ):

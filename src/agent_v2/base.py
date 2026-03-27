@@ -5,11 +5,12 @@
 from __future__ import annotations
 import logging
 
-logging.getLogger("httpx").setLevel(logging.WARNING)
 import sys
 import random
-import time
 import json
+import inspect
+import asyncio
+
 from typing import (
     Any,
     Optional,
@@ -18,9 +19,11 @@ from typing import (
     Union,
     Sequence,
     Callable,
-    cast
+    cast,
+    Literal,
+    Coroutine,
+    Awaitable
 )
-from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langgraph.typing import ContextT
 from langchain.agents.structured_output import (
     AutoStrategy,
@@ -34,14 +37,19 @@ from langchain.agents.structured_output import (
 )
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
-from langchain_openai.chat_models import ChatOpenAI
-from langchain_core.messages import AIMessageChunk, ToolMessage
-
-from collections import deque
+from langchain_core.messages import AIMessageChunk, ToolMessage, AIMessage
+from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langchain_mcp_adapters.tools import load_mcp_tools
+from langgraph.types import Interrupt, interrupt, Command
+from langgraph.config import RunnableConfig
+from src.agent_v2.mcp_utils import get_tools
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.memory import InMemoryStore
 from asyncio.queues import Queue
-import asyncio
-from functools import partial
-from src.message.formated_ai import FormattedAIMessage
+
+from src.consumer import streaming_print, streaming_yield
+from .utils import auto_validate_interrupt_tools
+
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
     from langchain_core.tools.base import BaseTool
@@ -52,21 +60,26 @@ if TYPE_CHECKING:
     from langgraph.types import Checkpointer
     from langgraph.graph.state import CompiledStateGraph
     from langchain_core.messages.content import ReasoningContentBlock, TextContentBlock, ToolContentBlock
+    from src.mcp.client import MultiServerMCPClient
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
 T = TypeVar("T")
 ResponseT = TypeVar("ResponseT")
 
 
 class BasicAgent:
-
     agent_engine: CompiledStateGraph
     chat_engine: BaseChatModel
+    maxlen_tool_msg: int = 500
 
     def __init__(
             self,
             model: str | BaseChatModel,
             tools: Sequence[BaseTool | Callable | dict[str, Any]] | None = None,
             *,
+            mcp_client: Optional[MultiServerMCPClient] = None,
             provider: Optional[str] = None,
+            platform: Optional[str] = None,
             api_key: Optional[str] = None,
             base_url: Optional[str] = None,
             system_prompt: str | None = None,
@@ -83,18 +96,52 @@ class BasicAgent:
             cache: BaseCache | None = None,
     ):
         self.name = name or self.__class__.__name__
-        if provider is None:
+        if provider is None and isinstance(model, str):
             provider = self.infer_model_provider(model)
 
         self.provider = provider
+        self._base_url = base_url
+        self._api_key = api_key
+
+        # process chat model
         if isinstance(model, str):
-            self._chat_engine = init_chat_model(
-                model=model,
-                base_url=base_url,
-                api_key=api_key,
+            self._chat_engine = self.initialized_chat_model(
+                platform=platform,
+                model=model
             )
         else:
             self._chat_engine = model
+
+        # process tools (langchain + mcp)
+        if tools is None:
+            tools = []
+
+        if mcp_client:
+            for tool in mcp_client.tools:
+                tools.append(mcp_client.mcp_tool_to_langchain_tool(tool))
+
+        # auto_interrupt_before, auto_interrupt_after = auto_validate_interrupt_tools(tools)
+        # interrupt_before = interrupt_before or auto_interrupt_before
+        # interrupt_after = interrupt_after or auto_interrupt_after
+
+        checkpointer = checkpointer or InMemorySaver()
+        store = store or InMemoryStore()
+
+        if not middleware and False:
+            middleware = [
+                HumanInTheLoopMiddleware(
+                    interrupt_on={
+                        "write_file": True,  # All decisions (approve, edit, reject) allowed
+                        "list_files": {"allowed_decisions": ["approve", "reject"]},  # No editing allowed
+                        # Safe operation, no approval needed
+                        "read_data": True,
+                    },
+                    # Prefix for interrupt messages - combined with tool name and args to form the full message
+                    # e.g., "Tool execution pending approval: execute_sql with query='DELETE FROM...'"
+                    # Individual tools can override this by specifying a "description" in their interrupt config
+                    description_prefix="Tool execution pending approval",
+                ),
+            ]
 
         self._agent_engine = create_agent(
             model=self._chat_engine,
@@ -113,10 +160,39 @@ class BasicAgent:
             cache=cache
         )
 
-        self.reasoning_queue = Queue(maxsize=1000)
-        self.tool_call_queue = Queue(maxsize=1000)
-        self.text_queue = Queue(maxsize=1000)
-        self.progression_queue = Queue(maxsize=1000)
+    def initialized_chat_model(
+            self,
+            platform: str,
+            model: str,
+    ):
+        if platform == 'huggingface-endpoint':
+            from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+            llm = HuggingFaceEndpoint(
+                repo_id=model,
+                task="text-generation",
+                max_new_tokens=512,
+                do_sample=False,
+                repetition_penalty=1.03,
+                provider="auto",
+            )
+
+            return ChatHuggingFace(llm=llm)
+
+        elif platform == 'huggingface-pipeline':
+            from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
+
+            llm = HuggingFacePipeline.from_model_id(
+                model_id=model,
+                task='tex-generation')
+
+            return ChatHuggingFace(llm=llm)
+
+        else:
+            return init_chat_model(
+                model=model,
+                base_url=self._base_url,
+                api_key=self._api_key,
+            )
 
     @property
     def chat_engine(self):
@@ -134,151 +210,251 @@ class BasicAgent:
 
         return model_name[:index]
 
-    async def streaming_printer(self):
-        reasoning_flusher = asyncio.create_task(
-            self.flush_character(self.reasoning_queue, 'reasoning'))
-        tool_call_flusher = asyncio.create_task(
-            self.flush_character(self.tool_call_queue, 'tool_call_chunk'),
-            name='tool_call_flusher')
-        text_flusher = asyncio.create_task(
-            self.flush_character(self.text_queue, 'text'),
-            name='text_flusher')
+    async def internal_astream(
+            self,
+            input: dict | Command | None,
+            config: RunnableConfig | None = None,
+            *args,
+            context: Optional[Any] = None,
+            stream_mode: Optional[list[str]] = None,
+            consumer_queue: Optional[Queue] = None,
+            **kwargs
+    ):
+        """Asynchronous streaming with consumer queue to put token.
 
-        progress_writer = asyncio.create_task(
-            self.flush_character(self.progression_queue)
+        Args:
+            consumer_queue (Queue):
+                Queue consuming token generated by agent.
+        """
+        chunk_streamer = self._agent_engine.astream(
+            input,
+            config,
+            *args,
+            context=context,
+            stream_mode=stream_mode,
+            **kwargs
         )
+        local_tool_buffers = {}
+        ai_message = None
 
-    async def flush_character(self, _queue: Queue[str], block_type: str = 'reasoning'):
-        while True:
-            element = await _queue.get()
-            if element is None:
-                break
-
-            word = None
-            for word in element.strip(' '):
-                sys.stdout.write(word)
-                sys.stdout.flush()
-                time.sleep(random.uniform(0.003, 0.02))
-
-            if word and not word.endswith('\n'):
-                sys.stdout.write('\n')
-                sys.stdout.flush()
-
-    async def internal_astream(self, *args, **kwargs):
-        current_type = None
-        buffer = []
-
-        async for chunk in self._agent_engine.astream(*args, **kwargs):
+        async for chunk in chunk_streamer:
             chunk_type = chunk['type']
+            if chunk_type == 'messages':
+                await self.process_messages_chunk(
+                    chunk,
+                    consumer_queue,
+                    local_tool_buffers
+                )
+                if ai_message is None:
+                    ai_message = chunk['data']
+                    continue
+                ai_message += chunk['data']
+            elif chunk_type == 'updates':
+                await self.process_updates_chunk(chunk, consumer_queue)
 
-            if chunk_type == 'updates':
-                await self.process_updates_chunk(chunk)
-            elif chunk_type == 'messages':
-                # handle messages dict
-                pass
+        # put None for last element to stop dequeueing
+        await consumer_queue.put(None)
+        return ai_message
 
-                for block in token.content_blocks:
-                    print(block)
-                    block_type = block.get("type")
-                    # case 1: same type or first ever block → keep tục accumulating
-                    if current_type is None or block_type == current_type:
-                        current_type = block_type
-                        buffer.append(block)
-                        continue
+    async def ainteract(
+            self,
+            *args,
+            consumer_queue: Optional[Queue] = None,
+            consumer_function: Optional[
+                Awaitable[Callable[[Queue], None]] | Literal['print', 'yield']] = 'yield',
+            **kwargs
+    ):
+        """Asynchronous interact with consuming function and queue.
 
-                    merged_buffer = None
-                    _queue = None
-                    # case 2: different type → flush buffer
-                    if current_type == "reasoning":
-                        merged_buffer = merge_standard_block(buffer, 'reasoning')
-                        _queue = self.reasoning_queue
-                    elif current_type == "tool_call_chunk":
-                        merged_buffer = merge_tool_call_chunk(buffer)
-                        _queue = self.tool_call_queue
-                    elif current_type == "text":
-                        merged_buffer = merge_standard_block(buffer, 'text')
-                        _queue = self.text_queue
+        Args:
+            consumer_queue (Queue):
+                Queue consuming generated token by streaming,
+                then can be used by ``consumer_function`` to process element.
+            consumer_function (Queue):
+                The function getting consuming queue as input and process each element.
+                It can be default function with 'print' and ;yield'
+        """
+        kwargs.setdefault('version', 'v2')
+        kwargs.setdefault('stream_mode', ['messages'])
 
-                    if _queue is None or merged_buffer is None:
-                        continue
+        if consumer_queue is None:
+            consumer_queue = Queue(maxsize=10000)
 
-                    await _queue.put(merged_buffer)
+        gather_func = [self.internal_astream(*args, consumer_queue=consumer_queue, **kwargs)]
 
-                    # reset buffer
-                    current_type = block_type
-                    buffer = [block]
+        if consumer_function is None:
+            pass
+        elif isinstance(consumer_function, str):
+            if consumer_function == 'print':
+                gather_func.append(streaming_print(consumer_queue))
+            elif consumer_function == 'yield':
+                gather_func.append(streaming_print(consumer_queue))
+        elif isinstance(consumer_function, Callable):
+            if not inspect.iscoroutine(consumer_function):
+                raise RuntimeError(
+                    "`consumer_function` must be coroutine."
+                )
+            gather_func.append(consumer_function(consumer_queue))
 
-        if current_type == "reasoning":
-            merged_buffer = merge_standard_block(buffer, 'reasoning')
-            await self.reasoning_queue.put(merged_buffer)
-        elif current_type == "tool_call_chunk":
-            merged_buffer = merge_tool_call_chunk(buffer)
-            await self.tool_call_queue.put(merged_buffer)
-        elif current_type == "text":
-            merged_buffer = merge_standard_block(buffer, 'text')
-            await self.text_queue.put(merged_buffer)
+        out = await asyncio.gather(*tuple(gather_func))
 
-        await self.progression_queue.put(None)
-
-    async def ainteract(self, *args, **kwargs):
-        await asyncio.gather(
-            self.internal_astream(*args, **kwargs),
-            self.flush_character(self.progression_queue)
-        )
+        return out
 
     def interact(self, *args, **kwargs):
+        """Synchronous interact"""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = asyncio.get_event_loop()
 
-        loop.run_until_complete(self.ainteract(*args, **kwargs))
+        return loop.run_until_complete(self.ainteract(*args, **kwargs))
 
-    async def process_updates_chunk(self, chunk: dict[str, Any]):
+    async def process_updates_chunk(
+            self,
+            chunk: dict[str, Any],
+            consumer_queue: asyncio.Queue,
+    ):
         data = chunk['data']
-        sss = '-' * 20
 
-        # process ai message
+        if "__interrupt__" in data:
+            pass
+            # (Interrupt(value={
+            #     'action_requests':
+            #         [
+            #             {'name': 'list_files', 'args': {'directory': 'src/agent'},
+            #              'description': "Tool execution pending approval\n\nTool: list_files\nArgs: {'directory': 'src/agent'}"}
+            #         ],
+            #         'review_configs': [
+            #             {'action_name': 'list_files', 'allowed_decisions': ['approve', 'reject']}
+            #         ]},
+            #            id='1ebaba73cfa658e5f4a06638e8927228'))
+
+            # process ai message
         if 'model' in data:
-            last_message = data['model']['messages'][-1]
-            last_message = FormattedAIMessage(**last_message.__dict__)
+            last_message: "AIMessage" = data['model']['messages'][-1]
 
-            reasoning_content = last_message.reasoning_content
-            if reasoning_content:
-                reasoning_content = (f"{sss} [REASONING] {sss}\n"
-                                     f"{reasoning_content}"
-                                     f"{sss} [REASONING] {sss}\n")
-                await self.progression_queue.put(reasoning_content)
+            for block in last_message.content_blocks:
+                block_type = block.get("type")
 
-            if last_message.tool_calls:
-                tool_call_str = (f"{sss} [TOOL CALLS] {sss}\n"
-                                 f"{json.dumps(last_message.tool_calls, indent=2)}\n"
-                                 f"{sss} [TOOL CALLS] {sss}\n")
+                if block_type == 'reasoning':
+                    await consumer_queue.put({
+                        "type": "reasoning",
+                        "content": block.get('reasoning', '')
+                    })
 
-                await self.progression_queue.put(tool_call_str)
-            if last_message.content:
-                await self.progression_queue.put(last_message.content)
+                elif block_type == 'text':
+                    await consumer_queue.put({
+                        "type": "text",
+                        "content": block.get('text', '')
+                    })
+
+                elif block_type == 'tool_call':
+                    try:
+                        clean_args = json.loads(json.dumps(block["args"])) if block["args"] else {}
+                    except json.JSONDecodeError:
+                        clean_args = block["args"]
+
+                    tool_call_content = {
+                        "id": block["id"],
+                        "name": block["name"],
+                        "args": clean_args
+                    }
+                    formatted_tool = {
+                        "type": "tool_call",
+                        "content": tool_call_content
+                    }
+
+                    await consumer_queue.put(formatted_tool)
 
         # process tools message
         elif 'tools' in data:
-            tool_message = data['tools']['messages'][-1]
-            tool_message_str = f"{sss} [TOOL MESSAGE] {sss}\n"
-            tool_message_str += tool_message.pretty_repr()
-            tool_message_str += '\n'
-            tool_message_str += f"{sss} [TOOL MESSAGE] {sss}\n"
+            tool_messages: list[ToolMessage] = data['tools']['messages']
+            for tool_message in tool_messages:
+                await consumer_queue.put({
+                    "type": "tool_result",
+                    "content": tool_message.content
+                })
 
-            await self.progression_queue.put(tool_message_str)
         else:
-            print(chunk)
+            pass
 
-def merge_standard_block(blocks, block_type):
-    if not blocks:
-        return None
+    async def process_messages_chunk(
+            self,
+            chunk: dict[str, Any],
+            progression_queue: asyncio.Queue,
+            tool_buffers: dict
+    ):
+        token: AIMessageChunk | ToolMessage = chunk['data'][0]
 
-    return {
-        "type": block_type,
-        block_type: "".join(b.get(block_type, "") for b in blocks)
-    }
+        if isinstance(token, ToolMessage):
+            content = token.content if isinstance(token.content, str) else str(token.content)
+            await progression_queue.put({
+                "type": "tool_result",
+                "content": content
+            })
+            return
+
+        for block in token.content_blocks:
+            block_type = block.get("type")
+
+            if block_type == 'reasoning':
+                await progression_queue.put({
+                    "type": "reasoning",
+                    "content": block.get('reasoning', '')
+                })
+
+            elif block_type == 'text':
+                await progression_queue.put({
+                    "type": "text",
+                    "content": block.get('text', '')
+                })
+
+            elif block_type == 'tool_call_chunk':
+                # case 1: same type or first ever block → keep accumulating
+                idx = block.get("index")
+                if idx not in tool_buffers:
+                    tool_buffers[idx] = {"id": "", "name": "", "args": "", "index": idx}
+
+                # update tool call chunk into buffer
+                if block.get("id"):
+                    tool_buffers[idx]["id"] = block["id"]
+                if block.get("name"):
+                    tool_buffers[idx]["name"] = block["name"]
+                if block.get("args"):
+                    tool_buffers[idx]["args"] += block["args"]
+                if block.get("index"):
+                    tool_buffers[idx]["index"] = block["index"]
+
+            # 3. Kiểm tra xem Tool Call đã hoàn thiện chưa (thường dựa vào việc kết thúc chunk stream)
+            # Trong LangGraph/LangChain, khi tool_call_chunk không còn tới nữa, ta flush nó ra
+        if not getattr(token, 'tool_call_chunks'):
+            await self._flush_tool_buffers(progression_queue, tool_buffers)
+
+    async def _flush_tool_buffers(self, progression_queue: Queue, tool_buffers: dict):
+        """Hàm phụ trợ để put kết quả tool call đã gộp ra queue"""
+        if not tool_buffers:
+            return
+
+        for idx, tool in tool_buffers.items():
+            try:
+                clean_args = json.loads(tool["args"]) if tool["args"] else {}
+            except json.JSONDecodeError:
+                # Phòng trường hợp stream bị cắt ngang làm JSON lỗi
+                clean_args = tool["args"]
+
+            tool_content = {
+                "id": tool["id"],
+                "name": tool["name"],
+                "args": clean_args  # Lúc này args đã là string JSON hoàn chỉnh
+            }
+            formatted_tool = {
+                "type": "tool_call",
+                "content": tool_content  # Lúc này args đã là string JSON hoàn chỉnh
+            }
+            # In ra dưới dạng JSON đẹp
+            await progression_queue.put(formatted_tool)
+
+        tool_buffers.clear()  # Xóa buffer sau khi đã in
 
 
 def merge_tool_call_chunk(blocks: Sequence):
@@ -300,7 +476,3 @@ def merge_tool_call_chunk(blocks: Sequence):
             tool_call["index"] = b["index"]
 
     return tool_call
-
-
-def format_tool_call_log(tool_call):
-    return f"[TOOL] {tool_call.get('name')} | args={tool_call.get('args')}"

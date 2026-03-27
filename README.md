@@ -1,7 +1,20 @@
-I have access to the following tools:
+# COMP5014 Demo: Thinking of agent.
 
-1. **file_read** - Reads the content of a file (supports UTF-8, Latin-1, or locale encoding). Useful for evaluating, fixing, improving, or reformatting file content.
+## Startup Chat App
+```bash
+uv run uvicorn app:app
+```
 
-2. **dir_list** - Lists items inside a directory. Useful for scanning directory contents and combining with file reading operations.
+## Updates:
+Now I have some features:
 
-These tools can help with file content analysis, directory exploration, and text processing tasks. Would you like me to use either of these tools for a specific task?
+- Simple Chat UI
+- Show thought before producing final response
+- The conversation is persistent in a session.
+- Tools and human in loop are available. However, because of being incomplete, I disabled that.
+
+## Future work
+
+- Add new chat features
+- Complete tolls and human loop integration into chat UI
+- Optimize chat UI.
