@@ -26,31 +26,47 @@ ICONS = [
 async def server_lifespan(server: AccessibleFastMCP) -> AsyncIterator[Dict[str, Any]]:
     """Lifespan for the server"""
     # Setting something here
-    global mcp_server
     try:
-        logger.info(f"A new session connected to MCP Server {mcp_server.name!r}.")
+        logger.info(f'Accessible directories: {[str(s) for s in SANDBOX_DIRS]}.')
+        logger.info(f"A new session connected to MCP Server {server.name!r}.")
         yield {}
     finally:
-        logger.info(f"A session disconnected MCP Server {mcp_server.name!r}")
+        logger.info(f"A session disconnected MCP Server {server.name!r}")
 
 mcp_server = AccessibleFastMCP(
     name="Filesystem",
-    instructions="The MCP server define tools in filesystem running locally",
-    lifespan=server_lifespan
+    instructions="The MCP server define tools related to filesystem running locally",
+    lifespan=server_lifespan,
+    port=10000
 )
 
-BASE_DIR = Path.cwd()
+# tempopary solution
+SANDBOX_DIRS = [
+    Path.cwd() / '.workplace'
+]
 
 
 def _resolve_path(file_path: str) -> Path:
     """Ensure all paths stay within BASE_DIR."""
-    path = (BASE_DIR / file_path).resolve()
-    if not str(path).startswith(str(BASE_DIR)):
-        raise ValueError("Access outside base directory is not allowed.")
-    return path
+    for sand_dir in SANDBOX_DIRS:
+        path = (sand_dir / file_path).resolve()
+        if str(path).startswith(str(sand_dir)):
+            return path
+
+    logger.critical('Attempted to access non-allowed directories!!!')
+    raise ValueError(f"Access outside {SANDBOX_DIRS!r} is not allowed.")
 
 
-def execute_python_file(ctx: Context, file_path: str, aux_kwargs: dict[str, Any] = None) -> dict | str:
+@mcp_server.tool()
+async def get_accessible_dir():
+    """Get information about directories you are allowed to access.
+    Accessing others dir is not allowed and causes error.
+    """
+    return [str(s) for s in SANDBOX_DIRS]
+
+
+@mcp_server.tool(human_confirm=True)
+async def execute_python_file(ctx: Context, file_path: str, aux_kwargs: dict[str, Any] = None) -> dict | str:
     """Execute a Python file.
 
     Args:
@@ -59,20 +75,25 @@ def execute_python_file(ctx: Context, file_path: str, aux_kwargs: dict[str, Any]
     Returns:
         Dictionary of stdout, stderr, status code
     """
-    file_to_write = Path(file_path)
+    file_to_execute = _resolve_path(file_path)
+    if not file_to_execute.exists():
+        return f"File {file_path!r} not found"
+
+    if not file_to_execute.is_file() and file_to_execute.is_dir():
+        return f"{file_path!r} is a folder"
 
     asking_prompt = f"""
 Confirm executing file:
     -------------------------------------------
-    {file_path} (existing?: {file_to_write.exists()}).
+    {file_path} (existing?: {file_to_execute.exists()}).
     -------------------------------------------
 Proceed this operation? (y/n): """.lstrip()
 
     try:
-        require_human_confirm(asking_prompt=asking_prompt, kwargs=aux_kwargs)
+        # require_human_confirm(asking_prompt=asking_prompt, kwargs=aux_kwargs)
 
         with subprocess.Popen(
-            args=['python', file_path],
+            args=['python', file_to_execute],
             shell=False,
             restore_signals=True,
             text=True,
@@ -83,8 +104,8 @@ Proceed this operation? (y/n): """.lstrip()
             stdout, stderr = process.communicate()
             result = {"error": stderr, 'stdout': stdout, 'returncode': process.returncode}
 
-        logger.info(f"Successfully! Executed {file_path!r}. Result: {result}")
-        return f"Successfully! Executed {file_path!r}. Result: {result}"
+        logger.info(f"Executed {file_path!r}.")
+        return f"Executed {file_path!r}. Acquired result: {result}"
     except NeedHumanConfirmException as e:
         return e.kwargs
     except HumanAbortedException as e:
@@ -94,17 +115,17 @@ Proceed this operation? (y/n): """.lstrip()
         return f"Error executing {file_path!r}: {str(e)}"
 
 
-# @mcp_server.tool()
-def write_file(ctx: Context, content: str, file_path: str, aux_kwargs: dict[str, Any] = None) -> str | dict:
+@mcp_server.tool(human_confirm=True)
+async def write_file(ctx: Context, content: str, file_path: str, aux_kwargs: dict[str, Any] = None) -> str | dict:
     """Write the content to the file
 
     Args:
         content (str): Content to write
         file_path (str): Path to file, relative or absolute
     """
-    # User confirm
     file_to_write = Path(file_path)
 
+    # User confirm
     asking_prompt = f"""
 Confirm writing:
     -------------------------------------------
@@ -114,18 +135,17 @@ to {str(file_to_write)!r} (existing?: {file_to_write.exists()})
 Proceed this operation? (y/n): """.lstrip()
 
     try:
-        require_human_confirm(asking_prompt=asking_prompt, kwargs=aux_kwargs)
-
+        # require_human_confirm(asking_prompt=asking_prompt, kwargs=aux_kwargs)
         file_to_write.write_text(content)
 
         msg = (
-            f"Successfully! Wrote content:"
+            f"Wrote content:"
             f"\n\n"
             f"%s"
             f"\n\n"
             f"to {file_path!r}."
         )
-        logger.info(msg % content[:200])
+        # logger.info(msg % content[:200])
         return msg % content
     except NeedHumanConfirmException as e:
         return e.kwargs
@@ -136,7 +156,7 @@ Proceed this operation? (y/n): """.lstrip()
         return f"Error writing to {file_path!r}: {str(e)}"
 
 
-@mcp_server.tool()
+@mcp_server.tool(human_confirm=['approve', 'reject'])
 async def read_file(ctx: Context, file_path: str) -> str | bytes:
     """Read content in a file
 
@@ -148,20 +168,20 @@ async def read_file(ctx: Context, file_path: str) -> str | bytes:
     """
     path = _resolve_path(file_path)
     if not path.exists():
-        return f"File not found: {file_path}"
+        return f"File {file_path!r} not found"
 
     if not path.is_file() and path.is_dir():
         return f"{file_path!r} is a folder"
 
     try:
         content = path.read_text(encoding="utf-8")
-        return f"Successfully! Content in {file_path!r}:\n{'-'*50}\n{content}"
+        return f"Content in {file_path!r}:\n\n{'-'*50}\n{content}"
     except Exception as e:
         return f"Error reading {file_path!r}: {str(e)}"
 
 
 @mcp_server.tool()
-def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
+async def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
     """Count lines in file
 
     Args:
@@ -172,7 +192,7 @@ def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
     """
     path = _resolve_path(file_path)
     if not path.exists():
-        return f"File not found: {file_path}"
+        return f"File {file_path!r} not found"
 
     if not path.is_file() and path.is_dir():
         return f"{file_path!r} is a folder"
@@ -181,13 +201,13 @@ def count_lines_in_file(ctx: Context, file_path: str) -> int | str:
         with open(path, 'r') as f:
             n_lines = len(f.readlines())
 
-        return f"Count lines in {file_path!r} is {n_lines}."
+        return f"Line count in {file_path!r} is {n_lines}."
     except Exception as e:
         return f"Error counting lines in {file_path!r}. {str(e)}"
 
 
 @mcp_server.tool()
-def count_words_in_file(ctx: Context, file_path: str) -> int | str:
+async def count_words_in_file(ctx: Context, file_path: str) -> int | str:
     """Count words in file
 
     Args:
@@ -198,7 +218,7 @@ def count_words_in_file(ctx: Context, file_path: str) -> int | str:
     """
     path = _resolve_path(file_path)
     if not path.exists():
-        return f"File not found: {file_path}"
+        return f"File {file_path!r} not found"
 
     if not path.is_file() and path.is_dir():
         return f"{file_path!r} is a folder"
@@ -207,13 +227,13 @@ def count_words_in_file(ctx: Context, file_path: str) -> int | str:
         with open(path, 'r') as f:
             n_words = len(f.read().split(' '))
 
-        return f"Count words in {file_path!r} is {n_words}."
+        return f"Word count in {file_path!r} is {n_words}."
     except Exception as e:
         return f"Error counting words in {file_path!r}. {str(e)}"
 
 
 @mcp_server.tool()
-def list_dir(ctx: Context, dir: str) -> str:
+async def list_dir(ctx: Context, dir: str) -> str:
     """List items in a directory
 
     Args:
@@ -224,36 +244,35 @@ def list_dir(ctx: Context, dir: str) -> str:
     """
     path = _resolve_path(dir)
     if not path.exists():
-        return f"Folder not found: {dir}"
+        return f"Folder {dir!r} not found"
 
     if path.is_file() and not path.is_dir():
         return f"{dir!r} is a file"
     try:
         items = os.listdir(path)
 
-        return f"Items in {dir!r}: {items}"
+        return f"Items in {dir!r}:\n\n {items}"
     except Exception as e:
         return f"Error listing items in {dir!r}: {str(e)}"
 
 
 @mcp_server.resource(uri='project://{file}')
-def get_content(ctx: Context, file: str) -> Union[str, bytes]:
+async def get_content(ctx: Context, file: str) -> Union[str, bytes]:
     path = _resolve_path(file)
     if not path.exists():
-        return f"File not found: {file}"
+        return f"File {file!r} not found"
     if not path.is_file():
         return f"{file!r} is a folder"
 
     try:
         content = path.read_text(encoding='utf-8')
-
         return content
     except Exception as e:
         return f"Error reading {file!r}: {str(e)}"
 
 
 @mcp_server.prompt()
-def general_system_prompt(ctx: Context):
+async def general_system_prompt(ctx: Context):
     return """You are a very helpful assistance."""
 
 

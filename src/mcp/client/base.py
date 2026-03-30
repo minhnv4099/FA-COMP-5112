@@ -10,28 +10,16 @@ import logging
 import functools
 import os.path
 import warnings
-from abc import ABC, ABCMeta, abstractmethod
+from abc import abstractmethod
 from typing import (
     Optional,
     Any,
     Union,
-    Coroutine,
-    final,
-    TYPE_CHECKING,
-    Protocol,
-    runtime_checkable,
-    cast
 )
 
-from sympy.codegen.fnodes import use_rename
 from typing_extensions import override
 
 from langchain_core.tools import BaseTool, StructuredTool
-from langchain_mcp_adapters.tools import (
-    convert_mcp_tool_to_langchain_tool,
-    load_mcp_tools,
-    create_session
-)
 from mcp.client.session import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp.client.sse import sse_client
@@ -41,10 +29,6 @@ from contextlib import AsyncExitStack, suppress
 
 from src.mcp.client.mixin import MCPClientMixin
 
-
-if TYPE_CHECKING:
-    from langchain_core.messages import ToolMessage
-    from langchain_core.tools.base import ToolCall
 
 logger = logging.getLogger(__name__)
 DEFAULT_LOCALHOST = 'http://localhost'
@@ -87,7 +71,7 @@ class SingleServerMCPClient(MCPClientMixin):
             endpoint:
                 Endpoint of server to connect.
                 It can be path to python file for `stdio` transport.
-                `Url` or `port` for `sse` transport.
+                `Url` for `sse` transport.
         """
         self.name = name or endpoint
         self.endpoint = endpoint
@@ -155,7 +139,7 @@ class SingleServerMCPClient(MCPClientMixin):
                 "'prompts_dict' is lazy, and it is empty. "
                 "Call 'self.list_prompts' first, then you can access 'prompts_dict'. "
             )
-            # self._prompts_dict = self.run(self.list_prompts())
+
         return self._prompts_dict
 
     @property
@@ -304,6 +288,8 @@ class SingleServerMCPClient(MCPClientMixin):
             read_stream, write_stream = await self.make_server_parameters(endpoint)
             self.session = await self.exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
             await self.session.initialize()
+            logger.info(f"{self.name!r} connected to MCP Server at {self.endpoint!r}.")
+
             return True
 
         return False
@@ -315,7 +301,7 @@ class SingleServerMCPClient(MCPClientMixin):
             if self.exit_stack:
                 await self.exit_stack.aclose()
         except RuntimeError as e:
-            # logger.warning(f"Client {self.name} cleanup encountered task mismatch: {e}")
+            logger.warning(f"Client {self.name} cleanup encountered task mismatch: {e}")
             pass
         except Exception as e:
             logger.error(f"Error cleaning up client {self.name}: {e}")
@@ -344,7 +330,6 @@ class SingleStdioServerMCPClient(SingleServerMCPClient):
         transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
         read_stream, write_stream = transport
 
-        logger.info(f"{self.name!r} connected to MCP Server at path {server_script_path!r}.")
         return read_stream, write_stream
 
 
@@ -354,7 +339,6 @@ class SingleSseServerMCPClient(SingleServerMCPClient):
         transport = await self.exit_stack.enter_async_context(sse_client(url))
         read_stream, write_stream = transport
 
-        logger.info(f"{self.name!r} connected to MCP Server at url {url!r}.")
         return read_stream, write_stream
 
 
@@ -366,19 +350,17 @@ class MultiServerMCPClient(MCPClientMixin):
 
             * Two-element tuple: first is name of that server, second is path to server ``.py`` file.
             Now we only support ``.py`` file.
-            For example::
+                For example::
+                    [('name', 'server_file'), ...]
 
-                [('name', 'server_file'), ...]
             * Server file: List server paths, in this case name of server is server file name (without extension).
             For example::
-
                 ['server_file' ...]
 
             * Url or port: 'http://localhost:8000/sse' or '8000'
 
             * Mixed elements.
             For example::
-
                 [('name', '*.py'), '*.py', 'url', port]
 
     """

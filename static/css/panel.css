@@ -1,0 +1,29 @@
+/* --- RIGHT PANEL (Upload & Extra Info) --- */
+.panel-right {
+    background: var(--bg-sidebar);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    gap: 20px;
+}
+
+.upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 30px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.upload-area:hover { border-color: var(--accent-indigo); background: rgba(99, 102, 241, 0.05); }
+.upload-icon { font-size: 24px; margin-bottom: 10px; display: block; }
+
+#imagePreview {
+    margin-top: 10px; width: 100%; max-height: 200px; object-fit: contain;
+    border-radius: 8px; display: none;
+}
+
+.info-card { background: var(--bg-header); padding: 15px; border-radius: 8px; border: 1px solid var(--border); }
+.info-card h4 { margin: 0 0 10px 0; font-size: 14px; color: var(--accent-indigo); text-transform: uppercase; }

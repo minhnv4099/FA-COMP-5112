@@ -7,10 +7,17 @@ import json
 import random
 import asyncio
 from asyncio import Queue
+from typing import TypedDict, Union
 
 
-async def streaming_print(_queue: Queue):
-    current_mode = None
+class Block(TypedDict):
+    type: str
+    content: Union[str, dict]
+
+
+async def streaming_print(_queue: Queue[Block]):
+    """Print element in queue until the end."""
+    current_type = None
 
     while True:
         data = await _queue.get()
@@ -22,29 +29,26 @@ async def streaming_print(_queue: Queue):
         msg_type = data['type']
         content = data['content']
 
-        # In Header nếu đổi loại block (giúp nhìn đẹp trên terminal)
-        if msg_type != current_mode:
+        if msg_type != current_type:
             header = f"\n------ {msg_type.upper()} ------\n"
             sys.stdout.write(header)
-            current_mode = msg_type
+            current_type = msg_type
 
-        # Xử lý nội dung
-        if msg_type == 'tool_call':
-            # Nếu là tool call chunk, format json cho đẹp
+        if msg_type == 'tool_call' or msg_type == 'interrupt':
             output = json.dumps(content, indent=2) + "\n"
-        else:
+        elif msg_type == 'tool_result':
             output = content
-
-        if msg_type == 'tool_result':
             if len(content) > 500:
-                content = content[:500] + '\n...'
-
+                output = content[:500] + '\n...'
+        else:
             output = content
 
         for char in output:
             sys.stdout.write(char)
             sys.stdout.flush()
-            await asyncio.sleep(random.uniform(0.003, 0.02))
+            await asyncio.sleep(random.uniform(0.0003, 0.002))
+
+        _queue.task_done()
 
 
 async def streaming_yield(_queue: Queue):
@@ -56,4 +60,11 @@ async def streaming_yield(_queue: Queue):
         if data is None:
             break
 
+        if data is None:
+            _queue.task_done()
+            break
+
+        # yield the original data
         yield data
+
+        _queue.task_done()

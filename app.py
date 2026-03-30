@@ -6,21 +6,22 @@ import time
 import os
 import asyncio
 import json
+import logging
 
 from typing import Optional
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-
 from contextlib import asynccontextmanager
+
 from src.agent_v2.base import BasicAgent
 from src.mcp.client import MultiServerMCPClient
-import logging
-
+from src.consumer import streaming_yield
+from src.mcp.manager import auto_create_mcp_client
 from dotenv import load_dotenv
-load_dotenv()
 
+load_dotenv()
 logger = logging.getLogger("ChatApp")
 mcp_client: Optional[MultiServerMCPClient] = None
 agent: Optional[BasicAgent] = None
@@ -31,21 +32,11 @@ async def flush_character(_queue: asyncio.Queue):
     Retrieves data from the Queue (populated by LLM/Process_chunk)
     and yields it as a stream for FastAPI's StreamingResponse.
     """
-    while True:
-        # Get data (expected dict: {"type": "...", "content": "..."})
-        data = await _queue.get()
-
-        if data is None:
-            _queue.task_done()
-            break
-
-        # Standard Server-Sent Events (SSE) format
+    async for data in streaming_yield(_queue):
         yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
-        _queue.task_done()
 
-
-async def stream_llm(message: str, config):
+async def stream_llm(message: str | dict, config):
     """
     Main orchestrator for streaming LLM responses with cancellation support.
     """
@@ -54,10 +45,11 @@ async def stream_llm(message: str, config):
 
     producer = asyncio.create_task(
         agent.ainteract(
-            {"messages": [{"role": "user", "content": message}]},
+            message,
             config,
-            consumer_function=None,
+            stream_mode='messages',
             consumer_queue=flush_queue,
+            consumer_function=None,
         )
     )
 
@@ -90,22 +82,16 @@ async def stream_llm(message: str, config):
 async def lifespan(_app: FastAPI):
     global agent, mcp_client
     try:
-        mcp_client = MultiServerMCPClient(
-            connect_params=[
-                ("filesystem", 8000),
-                ("gmail", 8888),
-                ("contact", 8080),
-                ("vision", 8765),
-            ]
-        )
-
-        async with mcp_client as _mcp_client:
+        async with auto_create_mcp_client() as _mcp_client:
             agent = BasicAgent(
                 'openrouter:nvidia/nemotron-3-super-120b-a12b:free',
+                # 'deepseek-ai/DeepSeek-R1-0528',
+                # platform='huggingface-endpoint',
+                # system_prompt='Explain purpose when using a tool.',
                 base_url=os.getenv('BASE_URL'),
                 api_key=os.getenv('OPENROUTER_API_KEY'),
-                system_prompt='Explain purpose when using a tool.',
-                mcp_client=_mcp_client
+                mcp_client=_mcp_client,
+                middleware='default'
             )
 
             yield
@@ -134,17 +120,25 @@ async def home_page():
 
 
 @app.post("/chat")
-async def chat(request: Request):
-    data = await request.json()
-    config = {"configurable": {"thread_id": data['thread_id']}}
-    message = data["message"]
+async def chat(data: Request):
+    payload = await data.json()
+
+    config = {"configurable": {"thread_id": payload.get('thread_id')}}
+    if 'message' in payload:
+        message: str = payload['message']
+    else:
+        decisions = [
+            {
+                'type': payload['decision'],
+                'message': payload.get('additional_info'),
+                'edited_action': payload.get('additional_info')
+            }
+        ]
+        message: dict = {
+            'decisions': decisions
+        }
 
     return StreamingResponse(
         content=stream_llm(message, config),
         media_type="text/event-stream"
     )
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8080)

@@ -1,0 +1,185 @@
+.hidden {
+    display: none !important;
+}
+
+/* Settings Style */
+.settings-card {
+    background: #0f172a;
+    padding: 30px;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 500px;
+    border: 1px solid #334155;
+}
+
+.setting-item {
+    margin: 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.setting-item input, .setting-item select {
+    padding: 10px;
+    background: #1e293b;
+    border: 1px solid #475569;
+    color: white;
+    border-radius: 6px;
+}
+
+.btn-primary { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
+.btn-secondary { background: #475569; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
+
+/* Container chính */
+.page-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+    padding: 20px;
+}
+
+.home-centered-wrapper {
+    max-width: 650px;
+    width: 100%;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.5rem;
+    animation: fadeInUp 0.8s ease-out;
+}
+
+/* Avatar Large - Scale hợp lý */
+.profile-avatar-large {
+    width: 140px;
+    height: 140px;
+    font-size: 4.5rem;
+    background: #1e293b;
+    border: 3px solid #3b82f6;
+    border-radius: 50%;
+
+    /* CĂN GIỮA QUAN TRỌNG */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 auto 1.5rem auto; /* Thêm auto vào 2 bên trái phải */
+
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    /* Đảm bảo không bị dính padding lạ */
+    box-sizing: border-box;
+}
+
+.profile-avatar-large:hover {
+    transform: scale(1.1) rotate(5deg);
+}
+
+/* Typography */
+h1#profile-name {
+    font-size: 3rem;
+    margin: 0;
+    color: #f8fafc;
+    letter-spacing: -1px;
+}
+
+.bio {
+    color: #94a3b8;
+    font-size: 1.2rem;
+    margin-top: 0.5rem;
+}
+
+.nav-links-centered {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.nav-item-pill {
+    padding: 8px 16px;
+    background: rgba(51, 65, 85, 0.5);
+    border: 1px solid #475569;
+    border-radius: 20px;
+    color: #cbd5e1;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.nav-item-pill:hover {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+    transform: translateY(-2px);
+}
+
+/* Card mô tả */
+.description-card {
+    background: rgba(30, 41, 59, 0.7);
+    padding: 2rem;
+    border-radius: 16px;
+    border: 1px solid #334155;
+    width: 100%;
+}
+
+.description-card h4 {
+    margin-bottom: 10px;
+    color: #3b82f6;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.description-card p {
+    line-height: 1.7;
+    color: #e2e8f0;
+}
+
+.system-tag {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 15px;
+    font-size: 1rem;
+    color: #64748b;
+}
+
+/* Nút bấm chính */
+.home-actions {
+    display: flex;
+    gap: 20px;
+}
+
+.btn-primary {
+    padding: 12px 32px;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 1.1rem;
+    cursor: pointer;
+    box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3);
+}
+
+.btn-secondary {
+    padding: 12px 32px;
+    background: transparent;
+    color: #94a3b8;
+    border: 1px solid #475569;
+    border-radius: 10px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.btn-primary:hover { background: #2563eb; transform: translateY(-3px); }
+.btn-secondary:hover { background: #1e293b; color: white; }
+
+/* Animation */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}

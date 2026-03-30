@@ -1,0 +1,123 @@
+/* Container Sidebar */
+.dashboard-left {
+    display: flex;
+    flex-direction: column; /* Xếp theo cột dọc */
+    height: 100vh;         /* Full chiều cao màn hình */
+    padding: 1.25rem;
+    background-color: #0f172a;
+    border-right: 1px solid #334155;
+    box-sizing: border-box;
+}
+
+/* New Chat Button */
+.btn-new-chat {
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    color: white;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.btn-new-chat:hover {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: #3b82f6;
+}
+
+.nav-links {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* History List */
+.chat-history-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.nav-item {
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #cbd5e1;
+    text-decoration: none;
+    transition: background 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nav-item:hover {
+    background: #1e293b;
+}
+
+.nav-item.active {
+    background: #334155;
+    color: white;
+    border-left: 3px solid #3b82f6;
+}
+
+.description-area {
+}
+.tool-list {}
+
+/* Tools Status */
+.tool-status-item {
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    color: #94a3b8;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-dot.online { background: #10b981; box-shadow: 0 0 8px #10b981; }
+
+/* Phần Footer chứa nút Back */
+.sidebar-footer {
+    margin-top: auto;      /* ĐẨY XUỐNG DƯỚI CÙNG */
+    padding-top: 1.5rem;
+    border-top: 1px solid #334155; /* Đường kẻ ngăn cách cho đẹp */
+}
+
+/* Style cho nút Back to Home */
+.btn-back-home {
+    margin-top: auto;      /* ĐẨY XUỐNG DƯỚI CÙNG */
+    width: 100%;
+    padding: 12px;
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+}
+
+.btn-back-home:hover {
+    background: #334155;
+    color: white;
+    border-color: #475569;
+    transform: translateY(-2px); /* Hiệu ứng nhấc nhẹ khi hover */
+}

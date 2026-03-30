@@ -7,35 +7,34 @@ from __future__ import print_function
 import logging
 import base64
 import re
+import json
 import warnings
 
-from typing import AsyncIterator, Dict, Any, Optional, Literal
+from typing import AsyncIterator, Dict, Any, Optional
 
 from dateutil import tz
 from datetime import date
-from contextlib import asynccontextmanager
 from pathlib import Path
-from json import dumps
+from contextlib import asynccontextmanager
+
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
-
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
+from googleapiclient.discovery import build, Resource
 
-from mcp.server.fastmcp.server import FastMCP, Context
+from mcp.server.fastmcp.server import Context
 
-from src.telemetry.telemetry_decorator import telemetry_mcp_tool, telemetry_prompt, telemetry_resource
-from src.telemetry.telemetry import record_startup, record_shutdown
 from src.mcp.server.utils import require_human_confirm, NeedHumanConfirmException, HumanAbortedException
+from src.mcp.server.wrapper import AccessibleFastMCP
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 logging.basicConfig(
     level=logging.INFO,
-    format='[%(asctime)s][%(levelname)s][%(name)s][%(funcName)s] - %(message)s #%(lineno)d'
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s #%(lineno)d'
 )
 logger = logging.getLogger("GmailServiceMCPServer")
 
@@ -46,42 +45,44 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",            # Gửi, đọc, xóa, thay đổi labels
 ]
 
-CREDENTIAL_FILE = Path("/Users/minhnguyen/Main/Study/Major/Projects/Python/langrework/data/crendentials/minhnv14099_credential.json")
-TOKEN_FILE = CREDENTIAL_FILE.with_name(CREDENTIAL_FILE.name.rstrip('.json') + "_token.json")
+PWD = Path.cwd()
+CREDENTIAL_FILE = PWD / 'data/crendentials/minhnv14099_credential.json'
+TOKEN_FILE = PWD / 'data/crendentials/minhnv14099_credential_token.json'
 
 POPABLE_FIELDS = tuple()
 
 
 @asynccontextmanager
-async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
+async def server_lifespan(server: AccessibleFastMCP) -> AsyncIterator[Dict[str, Any]]:
     # Setting something here
+    global _gmail_service
     try:
-        record_startup()
+        logger.info(f"A new session connected to MCP Server {server.name!r}.")
         yield {}
     finally:
-        global _gmail_service, mcp_server
+        global _gmail_service
         if _gmail_service:
             _gmail_service.close()
             logger.info('Close Gmail service.')
-            logger.info(f'MCP Server {mcp_server.name!r} shut down.')
-            record_shutdown()
+        logger.info(f"A session disconnected MCP Server {server.name!r}")
 
 
-mcp_server = FastMCP(
+mcp_server = AccessibleFastMCP(
     name='GmailService',
-    lifespan=server_lifespan
+    instructions="The MCP server define tools working with Gmail api",
+    lifespan=server_lifespan,
+    port=11000
 )
-
-_gmail_service: Optional[None] = None
+_gmail_service: Optional[Resource] = None
 
 
 def get_service():
     global _gmail_service
 
     if _gmail_service:
-        ...
+        return _gmail_service
     else:
-        creds = None
+        creds: Credentials | None = None
 
         if TOKEN_FILE.exists():
             creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
@@ -159,7 +160,6 @@ def get_full_info(msg_id: str) -> Dict[str, str]:
     """
     try:
         service = get_service()
-
         msg = service.users().messages().get(
             userId='me',
             id=msg_id,
@@ -227,9 +227,8 @@ def get_full_info(msg_id: str) -> Dict[str, str]:
         return dict()
 
 
-@mcp_server.tool()
-@telemetry_mcp_tool("send_email")
-def send_email(ctx: Context, to: str, subject: str, message_text: str, aux_kwargs: Optional[dict[str, Any]] = None):
+@mcp_server.tool(human_confirm=True)
+async def send_email(ctx: Context, to: str, subject: str, message_text: str, aux_kwargs: Optional[dict[str, Any]] = None):
     """Send an email message to a person. If human didn't provide recipient address, let try find it by yourself by using contacts.
 
     Args:
@@ -252,7 +251,7 @@ Confirm sending message:
 Proceed this operation? (y/n): """.lstrip()
 
     try:
-        require_human_confirm(asking_prompt=asking_prompt, kwargs=aux_kwargs)
+        # require_human_confirm(asking_prompt=asking_prompt, kwargs=aux_kwargs)
 
         service = get_service()
 
@@ -277,13 +276,12 @@ Proceed this operation? (y/n): """.lstrip()
 
 
 @mcp_server.tool()
-@telemetry_mcp_tool("get_messages")
-def get_messages(ctx: Context, max_results: int = 10, query: Optional[str] = None) -> str:
+async def get_messages(ctx: Context, max_results: int = 10, query: Optional[str] = None) -> str:
     """Get messages with query acting as the filter
 
     Args:
         max_results: Maximum number of messages to get. None if no mention.
-        query: Query to filter message. It likes when type search on Web.
+        query: Query to filter message when need to get messages with filter requirements.
 
     Returns:
         Content of messages.
@@ -292,24 +290,25 @@ def get_messages(ctx: Context, max_results: int = 10, query: Optional[str] = Non
         messages = _get_messages(max_results, query)
         messages_str = ""
         for m in messages:
-            messages_str += dumps(m, indent=2)
+            messages_str += json.dumps(m, indent=2)
             messages_str += '\n\n'
             messages_str += '-'*100 + '\n\n'
 
         logger.info(f"Get {len(messages)} messages successfully with query: {query!r}.")
-        return f'Get messages successfully. \n{messages}'
+        return f'Got messages successfully. \n{messages}'
     except Exception as e:
         logger.error(f"Error getting messages: {e}")
         return f"Error getting messages: {e}"
 
 
-@mcp_server.tool()
-@telemetry_mcp_tool("get_messages_by_date")
-def get_messages_by_date(ctx: Context, date_: Optional[str] = None) -> str:
+@mcp_server.tool(human_confirm=True)
+async def get_messages_by_date(ctx: Context, date_: Optional[str] = None) -> str:
     """Get messages on a specific date
 
     Args:
-        date_: Date information in form 'yyyy-mm-dd'. If the date is today, set it ``None``
+        date_:
+            Date information in form 'yyyy-mm-dd'.
+            If the date is today, set it ``None``
 
     Returns:
         Content of messages.
@@ -327,10 +326,9 @@ def get_messages_by_date(ctx: Context, date_: Optional[str] = None) -> str:
 
     try:
         messages = _get_messages(query=query)
-
         messages_str = ""
         for m in messages:
-            messages_str += dumps(m, indent=2)
+            messages_str += json.dumps(m, indent=2)
             messages_str += '\n\n'
             messages_str += '-'*100 + '\n\n'
 
@@ -341,16 +339,10 @@ def get_messages_by_date(ctx: Context, date_: Optional[str] = None) -> str:
         return f"Error getting messages on {date_!r}: {e}"
 
 
-@mcp_server.prompt()
-@telemetry_prompt(f"{mcp_server.name}--general_system_prompt")
-def general_system_prompt(ctx: Context):
-    return "You are a very helpful assistance."
-
-
 def main():
-    transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
-    logger.info(f'MCP Server Gmail API is running on transport {transport!r}.')
-    mcp_server.run(transport=transport)
+    from src.mcp.manager import run_mcp_server
+    with run_mcp_server(mcp_server):
+        mcp_server.run()
 
 
 if __name__ == '__main__':

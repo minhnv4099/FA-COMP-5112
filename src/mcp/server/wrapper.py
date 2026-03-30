@@ -2,8 +2,10 @@
 #  Copyright (c) 2026
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
-from typing import Literal
+import json
+from typing import Literal, Any, Callable
 from mcp.server import FastMCP
+from mcp.types import ToolAnnotations, Icon, AnyFunction
 
 TRANSPORT = Literal["stdio", "sse", "streamable-http"]
 
@@ -14,6 +16,8 @@ class AccessibleFastMCP(FastMCP):
     def __init__(
         self,
         *args,
+        name: str | None = None,
+        instructions: str | None = None,
         host: str = "127.0.0.1",
         port: int = 8000,
         mount_path: str = "/",
@@ -22,7 +26,18 @@ class AccessibleFastMCP(FastMCP):
         streamable_http_path: str = "/mcp",
         **kwargs
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            *args,
+            name=name,
+            instructions=instructions,
+            host=host,
+            port=port,
+            mount_path=mount_path,
+            sse_path=sse_path,
+            message_path=message_path,
+            streamable_http_path=streamable_http_path,
+            **kwargs
+        )
 
         self._host = host
         self._port = port
@@ -67,9 +82,58 @@ class AccessibleFastMCP(FastMCP):
         self._transport = transport
         super().run('sse')
 
-    def __getstate__(self):
+    @property
+    def meta(self):
         return {
-            'sever_name': self.name,
+            'name': self.name,
+            'host': self._host,
+            'port': self._port,
+            'instructions': self.instructions,
             'endpoint_url': self.endpoint_url
         }
 
+    def tool(
+        self,
+        name: str | None = None,
+        title: str | None = None,
+        description: str | None = None,
+        annotations: ToolAnnotations | None = None,
+        icons: list[Icon] | None = None,
+        meta: dict[str, Any] | None = None,
+        structured_output: bool | None = None,
+        human_confirm: bool | list[Literal['approve', 'edit', 'reject']] = False,
+    ) -> Callable[[AnyFunction], AnyFunction]:
+        """Override tool method that can provide allow decisions for human
+        in loop interruption."""
+        if callable(name):
+            raise TypeError(
+                "The @tool decorator was used incorrectly. Did you forget to call it? Use @tool() instead of @tool"
+            )
+
+        allowed_decisions = ['approve', 'edit', 'reject']
+        if isinstance(human_confirm, bool):
+            allowed_decisions = human_confirm
+        else:
+            allowed_decisions = list(sorted(set(allowed_decisions).intersection(set(human_confirm)), reverse=False))
+            if not allowed_decisions:
+                allowed_decisions = False
+
+        allowed_decisions = {"allowed_decisions": allowed_decisions}
+
+        def decorator(fn: AnyFunction) -> AnyFunction:
+            _description = description or fn.__doc__
+            _description = _description + json.dumps(allowed_decisions)
+
+            self.add_tool(
+                fn,
+                name=name,
+                title=title,
+                description=_description,
+                annotations=annotations,
+                icons=icons,
+                meta=meta,
+                structured_output=structured_output,
+            )
+            return fn
+
+        return decorator
