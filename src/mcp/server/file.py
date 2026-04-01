@@ -14,6 +14,11 @@ from contextlib import asynccontextmanager
 from src.mcp.server.utils import require_human_confirm, NeedHumanConfirmException, HumanAbortedException
 from src.mcp.server.wrapper import AccessibleFastMCP
 
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s #%(lineno)d'
+)
 logger = logging.getLogger("FilesystemMCPServer")
 
 ICONS = [
@@ -40,9 +45,11 @@ mcp_server = AccessibleFastMCP(
     port=10000
 )
 
+PWD = Path.cwd()
+
 # tempopary solution
 SANDBOX_DIRS = [
-    Path.cwd() / '.workplace'
+    PWD / '.workspace',
 ]
 
 
@@ -62,6 +69,10 @@ async def get_accessible_dir():
     """Get information about directories you are allowed to access.
     Accessing others dir is not allowed and causes error.
     """
+    for s in SANDBOX_DIRS:
+        if not s.exists():
+            s.mkdir(exist_ok=True, parents=True)
+
     return [str(s) for s in SANDBOX_DIRS]
 
 

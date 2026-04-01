@@ -1,0 +1,106 @@
+.suggestions-column {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px;
+    width: 100%;
+    max-width: 700px; /* Giới hạn để không bị quá dài trên desktop */
+    margin: auto;
+    align-items: center;
+}
+
+.sugg-btn {
+    background: #1e293b; /* Màu tối cùng tông app của Minh */
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 10px;
+    text-align: left; /* Căn lề trái cho text dài */
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: block;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    box-sizing: border-box;
+    display: block; /* Chuyển về block để chứa inline bên trong */
+    text-align: left;
+    width: fit-content; /* Quan trọng nhất */
+}
+
+.sugg-btn:hover {
+    background: #2d3a4f;
+    border-color: #3b82f6;
+    transform: translateY(-2px);
+}
+
+.sugg-content-row {
+    display: flex;
+    flex-direction: row; /* Đưa lên cùng 1 dòng */
+    align-items: baseline; /* Giúp chân chữ của nhãn và text thẳng hàng nhau */
+    gap: 5px; /* Khoảng cách giữa nhãn và câu hỏi */
+}
+
+.sugg-label {
+    background: rgba(59, 130, 246, 0.2); /* Thêm nền nhẹ cho giống nhãn (tag) */
+    color: #3b82f6;
+    font-weight: bold;
+    font-size: 14px;
+    font-size: 12px;
+    align-items: center;
+    text-align: center;
+    padding: 2px 8px;
+    flex-shrink: 0; /* Không cho nhãn bị bóp méo khi text quá dài */
+    border-radius: 4px;
+    display: inline-block; /* Để có thể thêm padding/background */
+    margin-right: 8px;
+    color: #3b82f6;
+    font-weight: bold;
+}
+
+
+.sugg-desc {
+    margin: 0;
+    font-size: 13px;
+    color: #94a3b8;
+    line-height: 1.4;
+    /* Nếu muốn text dài quá thì hiện dấu ... */
+    display: flex;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-style: italic;
+    margin: 0;
+    align-items: center;
+    justify-content: flex-end;
+    display: inline; /* Quan trọng: để nó nhảy lên cùng dòng với label */
+    color: #94a3b8;
+    margin: 0;
+    display: inline !important;
+}
+
+.scroll-top-btn {
+    position: fixed;
+    top: 30%; /* Cách header một khoảng */
+    right: 17.5%;
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    background: rgba(59, 130, 246, 0.8); /* Màu xanh trùng với app */
+    color: white;
+    border: none;
+    cursor: pointer;
+    z-index: 9999;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    display: block; /* Mặc định ẩn đi */
+}
+
+.scroll-top-btn:hover {
+    background: #3b82f6;
+    transform: translateY(-3px);
+}
+
+.scroll-top-btn .arrow {
+    font-size: 18px;
+    font-weight: bold;
+}

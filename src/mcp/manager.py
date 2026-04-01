@@ -84,7 +84,4 @@ def auto_create_mcp_client(info_file: str | None = None) -> MultiServerMCPClient
         connect_param = (server_info.get('name'), server_info.get('port'))
         connect_params.append(connect_param)
 
-    if connect_params:
-        return MultiServerMCPClient(connect_params)
-
-    return None
+    return MultiServerMCPClient(connect_params)

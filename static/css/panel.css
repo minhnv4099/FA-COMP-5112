@@ -27,3 +27,7 @@
 
 .info-card { background: var(--bg-header); padding: 15px; border-radius: 8px; border: 1px solid var(--border); }
 .info-card h4 { margin: 0 0 10px 0; font-size: 14px; color: var(--accent-indigo); text-transform: uppercase; }
+.info-card div div {
+    display: flex;
+    justify-content: space-between;
+}

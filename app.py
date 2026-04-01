@@ -19,10 +19,17 @@ from src.agent_v2.base import BasicAgent
 from src.mcp.client import MultiServerMCPClient
 from src.consumer import streaming_yield
 from src.mcp.manager import auto_create_mcp_client
+from src.tools.web_search import get_url_content
+from src.middlewares.model_selector import OPENROUTER_SUPPORTED_MODELS
 from dotenv import load_dotenv
 
-load_dotenv()
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s #%(lineno)d'
+)
 logger = logging.getLogger("ChatApp")
+load_dotenv()
+
 mcp_client: Optional[MultiServerMCPClient] = None
 agent: Optional[BasicAgent] = None
 
@@ -36,7 +43,7 @@ async def flush_character(_queue: asyncio.Queue):
         yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-async def stream_llm(message: str | dict, config):
+async def stream_llm(message: str | dict, config, context: dict | None = None):
     """
     Main orchestrator for streaming LLM responses with cancellation support.
     """
@@ -50,6 +57,7 @@ async def stream_llm(message: str | dict, config):
             stream_mode='messages',
             consumer_queue=flush_queue,
             consumer_function=None,
+            context=context
         )
     )
 
@@ -60,7 +68,7 @@ async def stream_llm(message: str | dict, config):
 
     except asyncio.CancelledError:
         # This block is triggered if the client disconnects (FastAPI raises CancelledError)
-        print("Client disconnected. Cancelling LLM producer...")
+        logger.info("Client disconnected. Cancelling LLM producer...")
         raise  # Re-raise to let FastAPI handle the cleanup
 
     finally:
@@ -84,14 +92,14 @@ async def lifespan(_app: FastAPI):
     try:
         async with auto_create_mcp_client() as _mcp_client:
             agent = BasicAgent(
-                'openrouter:nvidia/nemotron-3-super-120b-a12b:free',
-                # 'deepseek-ai/DeepSeek-R1-0528',
-                # platform='huggingface-endpoint',
-                # system_prompt='Explain purpose when using a tool.',
+                # 'openrouter:nvidia/nemotron-3-super-120b-a12b:free',
+                "qwen/qwen3.6-plus-preview:free",
+                system_prompt='Think fast, not reasoning too long (maximum 250 words).',
                 base_url=os.getenv('BASE_URL'),
                 api_key=os.getenv('OPENROUTER_API_KEY'),
                 mcp_client=_mcp_client,
-                middleware='default'
+                tools=[get_url_content],
+                middleware='default',
             )
 
             yield
@@ -124,6 +132,8 @@ async def chat(data: Request):
     payload = await data.json()
 
     config = {"configurable": {"thread_id": payload.get('thread_id')}}
+    context = {'model_name': payload.get('model_name', None)}
+
     if 'message' in payload:
         message: str = payload['message']
     else:
@@ -139,6 +149,11 @@ async def chat(data: Request):
         }
 
     return StreamingResponse(
-        content=stream_llm(message, config),
+        content=stream_llm(message, config, context),
         media_type="text/event-stream"
     )
+
+
+@app.get('/chat/model/available')
+async def get_available_models():
+    return list(OPENROUTER_SUPPORTED_MODELS.keys())

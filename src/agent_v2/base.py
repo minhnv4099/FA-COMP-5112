@@ -59,8 +59,9 @@ from src.refactory.middleware_refactory import (
     create_shell_middleware,
     create_summarize_middleware
 )
+from src.middlewares.model_selector import ModelSelector
 from .utils import auto_validate_interrupt_tools, get_middleware_tools
-from .constants import REASONING_FLAGS
+from .constants import REASONING_FLAGS, HUGGINGFACE_SUPPORTED_MODEL, OPENROUTER_SUPPORTED_MODELS
 from .chunk_process import process_messages_chunk, process_updates_chunk
 
 if TYPE_CHECKING:
@@ -93,7 +94,7 @@ class BasicAgent:
             *,
             mcp_client: Optional[MultiServerMCPClient] = None,
             provider: Optional[str] = None,
-            platform: Optional[str] = None,
+            platform: Optional[str | Literal['huggingface-endpoint', 'huggingface-pipeline']] = None,
             api_key: Optional[str] = None,
             base_url: Optional[str] = None,
             system_prompt: str | None = None,
@@ -131,14 +132,15 @@ class BasicAgent:
         # langchain tool
         if tools is None:
             tools = []
+        # server side tool
 
-        # plus mcp tool
+        # mcp tool
         if mcp_client:
             for tool in mcp_client.tools:
                 tools.append(mcp_client.mcp_tool_to_langchain_tool(tool))
 
         if middleware == 'default':
-            middleware: list['AgentMiddleware'] = []
+            middleware: list['AgentMiddleware'] = [ModelSelector()]
             middleware.extend(create_pii_middleware())
             middleware.extend(create_todo_middleware())
             middleware.extend(create_summarize_middleware(
@@ -155,6 +157,7 @@ class BasicAgent:
 
         hil_middleware = create_human_in_loop_middleware(interrupt_on)
         middleware = middleware + hil_middleware
+        # tools.append({"type": "web_search"})
 
         self._agent_engine = create_agent(
             model=self._chat_engine,
@@ -193,9 +196,15 @@ class BasicAgent:
 
     def initialized_chat_model(
         self,
-        platform: str,
         model: str,
+        platform: str | None = None,
     ):
+        if platform is None:
+            if model in HUGGINGFACE_SUPPORTED_MODEL.values():
+                platform = 'huggingface-endpoint'
+            elif model in OPENROUTER_SUPPORTED_MODELS.values():
+                model = 'openrouter:' + model
+
         if platform == 'huggingface-endpoint':
             from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
             llm = HuggingFaceEndpoint(
@@ -223,6 +232,7 @@ class BasicAgent:
                 model=model,
                 base_url=self._base_url,
                 api_key=self._api_key,
+                name=f"(Default) {model}",
             )
 
     async def internal_astream(
@@ -287,7 +297,7 @@ class BasicAgent:
             version=version
         )
 
-        with suppress(Exception):
+        with suppress(TypeError):
             async for chunk in chunk_streamer:
                 chunk_type = chunk['type']
                 if chunk_type == 'messages':

@@ -1,0 +1,18 @@
+:root {
+    --bg-main: #0f172a; --bg-header: #111827; --bg-msg-bot: #1f2937;
+    --bg-user: #2563eb; --text-main: #e5e7eb; --text-muted: #9ca3af;
+    --accent-green: #22c55e; --border: #374151; --accent-indigo: #6366f1;
+    --bg-sidebar: #1e293b; /* Màu nền cho dashboard và side panels */
+}
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: var(--bg-main);
+    color: var(--text-main);
+    display: flex;
+     justify-content: center;
+     height: 100vh;
+}
+
+.hidden { display: none !important; }
