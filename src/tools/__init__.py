@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from src.tools.shell.tool import ShellTool
     from src.tools.request.tool import UrlGetTool
     from src.tools.rag.tool import QueryRetrieveTool
+    from src.tools.web_search import get_url_content
 
 __all__ = [
     "FileReadRun",
@@ -24,7 +25,8 @@ __all__ = [
     "DirMakeRun",
     "ShellTool",
     "UrlGetTool",
-    "QueryRetrieveTool"
+    "QueryRetrieveTool",
+    "get_url_content"
 ]
 
 _module_lookup = {
@@ -34,7 +36,8 @@ _module_lookup = {
     "DirMakeRun": "src.tools.filesystem",
     "ShellTool": "src.tools.shell.tool",
     "UrlGetTool": "src.tools.request.tool",
-    "QueryRetrieveTool": "src.tools.rag.tool"
+    "QueryRetrieveTool": "src.tools.rag.tool",
+    "get_url_content": "src.tools.web_search"
 }
 
 

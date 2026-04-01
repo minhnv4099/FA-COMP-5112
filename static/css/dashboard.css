@@ -9,6 +9,13 @@
     box-sizing: border-box;
 }
 
+.sidebar-header {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
 /* New Chat Button */
 .btn-new-chat {
     width: 100%;
@@ -31,20 +38,71 @@
     border-color: #3b82f6;
 }
 
+.btn-delete-chat {
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: #0b1220;
+    border: 1px solid var(--border);
+    cursor: pointer;
+}
+
+.btn-delete-chat:hover {
+    border-color: #3b82f6;
+    background: #450a0a;
+    color: white;
+    border-color: #ef4444;
+}
+
 .nav-links {
     flex: 1;
     overflow-y: auto;
 }
 
-/* History List */
+/* History List Container */
 .chat-history-container {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    max-height: 400px;
+    gap: 6px;
+    height: auto;
+    max-height: 450px;
+
+    /* QUAN TRỌNG: Cho phép cuộn dọc */
     overflow-y: auto;
+    overflow-x: hidden; /* Chặn cuộn ngang để không bị xê dịch */
+
+    /* Tạo khoảng trống bên phải để thanh cuộn không đè lên chữ */
+    padding-right: 8px;
 }
 
+/* 2. CUSTOM SCROLLBAR (Làm cho thanh cuộn mỏng và đẹp) */
+.chat-history-container::-webkit-scrollbar {
+    width: 5px; /* Độ rộng thanh cuộn mỏng */
+}
+
+.chat-history-container::-webkit-scrollbar-track {
+    background: transparent; /* Nền của thanh cuộn */
+}
+
+.chat-history-container::-webkit-scrollbar-thumb {
+    background: #334155; /* Màu của cục cuộn */
+    border-radius: 10px;
+}
+
+.chat-history-container::-webkit-scrollbar-thumb:hover {
+    background: #475569; /* Màu khi di chuột vào */
+}
+
+/* Các mục Chat Item */
 .nav-item {
     padding: 10px;
     border-radius: 6px;
@@ -55,20 +113,39 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+
+    display: block;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #cbd5e1;
+    text-decoration: none;
+    background: transparent;
+
+    /* Đảm bảo item không bị ép chiều cao khi container hẹp */
+    flex-shrink: 0;
+
+    /* Xử lý chữ quá dài bằng dấu 3 chấm */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
 }
 
 .nav-item:hover {
-    background: #1e293b;
+    background: rgba(51, 65, 85, 0.5);
+    color: white;
 }
 
 .nav-item.active {
-    background: #334155;
+    background: #1e293b;
+    border-color: #3b82f6;
     color: white;
-    border-left: 3px solid #3b82f6;
 }
 
-.description-area {
-}
+.description-area {}
 .tool-list {}
 
 /* Tools Status */
@@ -96,8 +173,14 @@
     border-top: 1px solid #334155; /* Đường kẻ ngăn cách cho đẹp */
 }
 
-/* Style cho nút Back to Home */
-.btn-back-home {
+.sidebar-btn {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.btn-setting, .btn-back-home {
     margin-top: auto;      /* ĐẨY XUỐNG DƯỚI CÙNG */
     width: 100%;
     padding: 12px;
@@ -115,7 +198,7 @@
     transition: all 0.2s ease;
 }
 
-.btn-back-home:hover {
+.btn-setting:hover, .btn-back-home:hover {
     background: #334155;
     color: white;
     border-color: #475569;

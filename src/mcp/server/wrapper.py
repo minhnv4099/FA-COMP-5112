@@ -8,6 +8,7 @@ from mcp.server import FastMCP
 from mcp.types import ToolAnnotations, Icon, AnyFunction
 
 TRANSPORT = Literal["stdio", "sse", "streamable-http"]
+ALLOWED_DECISIONS = ('approve', 'edit', 'reject')
 
 
 class AccessibleFastMCP(FastMCP):
@@ -110,11 +111,10 @@ class AccessibleFastMCP(FastMCP):
                 "The @tool decorator was used incorrectly. Did you forget to call it? Use @tool() instead of @tool"
             )
 
-        allowed_decisions = ['approve', 'edit', 'reject']
         if isinstance(human_confirm, bool):
             allowed_decisions = human_confirm
         else:
-            allowed_decisions = list(sorted(set(allowed_decisions).intersection(set(human_confirm)), reverse=False))
+            allowed_decisions = list(sorted(set(ALLOWED_DECISIONS).intersection(set(human_confirm)), reverse=False))
             if not allowed_decisions:
                 allowed_decisions = False
 

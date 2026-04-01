@@ -2,13 +2,17 @@
 #  Copyright (c) 2025
 #  Minh NGUYEN <vnguyen9@lakeheadu.ca>
 #
+import json
 from abc import ABC
-from typing import Any, Literal, Callable, Type
-from typing_extensions import Annotated
-from pydantic import BaseModel, Field, SkipValidation, ValidationError
-
+from typing import Any, Literal, Callable, Type, Optional, cast
+from typing_extensions import Annotated, Unpack
+from pydantic import BaseModel
 from pydantic import ConfigDict
 from langchain_core.tools.base import BaseTool as LangchainBaseTool
+from langchain_core.runnables import Runnable
+from langchain.agents.middleware.human_in_the_loop import InterruptOnConfig, Decision, DecisionType
+from langchain.agents.middleware.types import ModelRequest
+from langchain.tools import tool
 
 
 class SchemaAnnotationError(TypeError):
@@ -25,11 +29,11 @@ class ToolExecutionException(Exception):
 
 
 TypeBaseModel = Type[BaseModel]
-
 ArgsSchema = TypeBaseModel | dict[str, Any]
+ALLOWED_DECISIONS = ["approve", "edit", "reject"]
 
 
-class BaseTool(LangchainBaseTool, ABC):
+class ToolWithInterruptAction(LangchainBaseTool, ABC):
     """Base class for all LangWork tools.
 
     This abstract class defines the interface that all LangWork tools must implement.
@@ -44,92 +48,77 @@ class BaseTool(LangchainBaseTool, ABC):
             SchemaAnnotationError: If ``args_schema`` has incorrect type annotation.
         """
         super().__init_subclass__(**kwargs)
+        allowed_decisions = cls.__annotations__.get("allowed_decisions", None)
 
-        args_schema_type = cls.__annotations__.get("args_schema", None)
-
-        if args_schema_type is not None and args_schema_type == BaseModel:
-            typehint_mandate = """
-class ChildTool(BaseTool):
-    ...
-    args_schema: Type[BaseModel] = SchemaClass
-    ..."""
-            name = cls.__name__
-            msg = (
-                f"Tool definition for {name} must include valid type annotations"
-                f" for argument 'args_schema' to behave as expected.\n"
-                f"Expected annotation of 'Type[BaseModel]'"
-                f" but got '{args_schema_type}'.\n"
-                f"Expected class looks like:\n"
-                f"{typehint_mandate}"
-            )
-            raise SchemaAnnotationError(msg)
-
-    name: str
-    """The unique name of the tool that clearly communicates its purpose."""
-    description: str
-    """Used to tell the model how/when/why to use the tool.
-    
-    You can provide few-shot examples as a part of the description.
-    """
-    args_schema: Annotated[ArgsSchema | None, SkipValidation()] = Field(
-        default=None, description="The tool schema."
-    )
-    """Pydantic model class to validate and parse the tool's input arguments.
-    
-    Args schema should be:
-    
-    - A subclass of `pydantic.BaseModel`.
-    """
-    return_direct: bool = False
-    """Whether to return the tool's output directly.
-
-    Setting this to `True` means that after the tool is called, the `AgentExecutor` will
-    stop looping.
-    """
-    verbose: bool = False
-    """Whether to log the tool's progress."""
-    tags: list[str] | None = None
-    """Optional list of tags associated with the tool.
-
-    These tags will be associated with each call to this tool,
-    and passed as arguments to the handlers defined in `callbacks`.
-
-    You can use these to, e.g., identify a specific instance of a tool with its use
-    case.
-    """
-    metadata: dict[str, Any] | None = None
-    """Optional metadata associated with the tool.
-
-    This metadata will be associated with each call to this tool,
-    and passed as arguments to the handlers defined in `callbacks`.
-
-    You can use these to, e.g., identify a specific instance of a tool with its use
-    case.
-    """
-
-    handle_tool_error: bool | str | Callable[[ToolExecutionException], str] | None = "Error when executing tool."
-    """Handle the content of the `ToolException` thrown."""
-
-    handle_validation_error: (
-            bool | str | Callable[[ValidationError], str] | None
-    ) = False
-    """Handle the content of the `ValidationError` thrown."""
-
-    response_format: Literal["content", "content_and_artifact"] = "content"
-    """The tool response format.
-
-    If `'content'` then the output of the tool is interpreted as the contents of a
-    `ToolMessage`. If `'content_and_artifact'` then the output is expected to be a
-    two-tuple corresponding to the `(content, artifact)` of a `ToolMessage`.
-    """
-
-    model_config = ConfigDict(extra='allow')
-
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,
+        allowed_decisions: Optional[list[DecisionType]] = None,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
 
-        if (
-            "name" in kwargs
-            and kwargs["name"] is not None
-        ):
+        if kwargs.get('name'):
             self.name = kwargs["name"]
+
+        if isinstance(allowed_decisions, bool):
+            if allowed_decisions is True:
+                allowed_decisions = ["approve", "edit", "reject"]
+        elif isinstance(allowed_decisions, list):
+            allowed_decisions = [decision for decision in allowed_decisions if decision in ALLOWED_DECISIONS]
+
+        self.allowed_decisions = InterruptOnConfig(allowed_decisions=allowed_decisions)
+
+
+def tool_with_interrupt(
+    *args: Any,
+    description: str | None = None,
+    return_direct: bool = False,
+    args_schema: ArgsSchema | None = None,
+    infer_schema: bool = True,
+    response_format: Literal["content", "content_and_artifact"] = "content",
+    parse_docstring: bool = False,
+    error_on_invalid_docstring: bool = True,
+    human_confirm: bool | list[Literal['approve', 'edit', 'reject']] = False,
+) -> LangchainBaseTool | Callable[[Callable | Runnable], LangchainBaseTool]:
+    """Decorate upper `@tool` to define allowed decision for interrupting when defining langchain tool."""
+
+    if isinstance(human_confirm, bool):
+        allowed_decisions = human_confirm
+    else:
+        allowed_decisions = list(sorted(set(ALLOWED_DECISIONS).intersection(set(human_confirm)), reverse=False))
+        if not allowed_decisions:
+            allowed_decisions = False
+
+    allowed_decisions = {"allowed_decisions": allowed_decisions}
+    if parse_docstring:
+        error_on_invalid_docstring = False
+
+    def _create_tool_factory(name_or_callable: str | Callable | None = None, runnable: Runnable | None = None,):
+        if callable(name_or_callable):
+            _description = description or name_or_callable.__doc__
+            _description = _description + json.dumps(allowed_decisions)
+        elif runnable:
+            _description = json.dumps(allowed_decisions)
+        else:
+            _description = description
+
+        _tool = tool(
+            name_or_callable,
+            runnable,
+            description=_description,
+            return_direct=return_direct,
+            args_schema=args_schema,
+            infer_schema=infer_schema,
+            response_format=response_format,
+            parse_docstring=parse_docstring,
+            error_on_invalid_docstring=error_on_invalid_docstring,
+        )
+
+        return _tool
+
+    if args:
+        if callable(args[0]):
+            return _create_tool_factory(*args)
+
+    return _create_tool_factory

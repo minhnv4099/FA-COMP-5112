@@ -8,20 +8,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta name="viewport" content="width=device-width">
     <title>Advanced Chatbot UI</title>
-
+    <link rel="stylesheet" href="/static/css/general.css">
     <link rel="stylesheet" href="/static/css/home-page.css">
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/chat-layout.css">
     <link rel="stylesheet" href="/static/css/panel.css">
-    <link rel="stylesheet" href="/static/css/style.css">
-
-</head>
+    <link rel="stylesheet" href="/static/css/sugg.css"></head>
 <body>
 
 <section id="page-home" class="page-container">
     <div class="home-centered-wrapper">
-
         <header class="home-header">
             <div class="profile-avatar-large">👨‍💻</div>
             <h1 id="profile-name">Minh Nguyen</h1>
@@ -32,7 +30,7 @@
             <a href="https://github.com/minhnv4099" target="_blank" class="nav-item-pill">
                 📁 GitHub
             </a>
-            <a href="https://linkedin.com/in/minh-nguyen" target="_blank" class="nav-item-pill">
+            <a href="https://www.linkedin.com/in/vanminhng02/" target="_blank" class="nav-item-pill">
                 💼 LinkedIn
             </a>
             <a href="mailto:minhnv14099@gmail.com" class="nav-item-pill">
@@ -43,8 +41,9 @@
         <article class="description-card">
             <h4>About This Project</h4>
             <p>
-                An advanced MCP-based chatbot featuring sequential reasoning logic,
-                real-time tool execution, and multi-server integration.
+                A reasoning-driven chatbot featuring sequential logic and autonomous tool orchestration.
+                It analyzes user intent to determine the most effective tools for any given query,
+                enabling real-time execution and seamless integration across multiple environments.
             </p>
             <div class="system-tag">
                 <span>Status: <b style="color: var(--accent-green);">Ready</b></span>
@@ -53,10 +52,9 @@
         </article>
 
         <footer class="home-actions">
-            <button class="btn-primary" onclick="showPage('chat')">🚀 Start New Chat</button>
+            <button class="btn-primary" onclick="createNewChat()">🚀 Start New Chat</button>
             <button class="btn-secondary" onclick="showPage('settings')">⚙️ Settings</button>
         </footer>
-
     </div>
 </section>
 
@@ -67,5 +65,7 @@
 <script src="/static/js/script.js"></script>
 <script src="/static/js/utils.js"></script>
 <script src="/static/js/state.js"></script>
+<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/chat.js"></script>
 </body>
 </html>

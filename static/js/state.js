@@ -9,13 +9,12 @@ const AppState = {
 
     async reload() {
         const lastPage = this.getLastPage();
-        console.log("Reloading to page:", lastPage);
-        await showPage(lastPage, false);
+        await showPage(lastPage);
     }
 };
 
 // Lắng nghe sự kiện load trang
 window.addEventListener('load', () => {
     // Để một khoảng nghỉ rất ngắn để DOM ổn định
-    setTimeout(() => AppState.reload(), 100);
+    setTimeout(() => AppState.reload(), 50);
 });

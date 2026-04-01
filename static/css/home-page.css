@@ -42,8 +42,8 @@
 }
 
 .home-centered-wrapper {
-    max-width: 650px;
-    width: 100%;
+    max-width: 2000px;
+    width: 1000px;
     text-align: center;
     display: flex;
     flex-direction: column;
@@ -54,8 +54,8 @@
 
 /* Avatar Large - Scale hợp lý */
 .profile-avatar-large {
-    width: 140px;
-    height: 140px;
+    width: 150px;
+    height: 150px;
     font-size: 4.5rem;
     background: #1e293b;
     border: 3px solid #3b82f6;
@@ -88,7 +88,7 @@ h1#profile-name {
 
 .bio {
     color: #94a3b8;
-    font-size: 1.2rem;
+    font-size: 1.3rem;
     margin-top: 0.5rem;
 }
 
@@ -100,13 +100,13 @@ h1#profile-name {
 }
 
 .nav-item-pill {
-    padding: 8px 16px;
+    padding: 8px 15px;
     background: rgba(51, 65, 85, 0.5);
     border: 1px solid #475569;
     border-radius: 20px;
     color: #cbd5e1;
     text-decoration: none;
-    font-size: 0.9rem;
+    font-size: 1.0rem;
     transition: all 0.2s;
 }
 
@@ -124,10 +124,12 @@ h1#profile-name {
     border-radius: 16px;
     border: 1px solid #334155;
     width: 100%;
+    max-width: 600px;
 }
 
 .description-card h4 {
     margin-bottom: 10px;
+    margin-top: 5px;
     color: #3b82f6;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -141,7 +143,7 @@ h1#profile-name {
 .system-tag {
     display: flex;
     justify-content: center;
-    gap: 20px;
+    gap: 25px;
     margin-top: 15px;
     font-size: 1rem;
     color: #64748b;

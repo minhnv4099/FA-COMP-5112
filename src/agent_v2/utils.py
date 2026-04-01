@@ -24,7 +24,6 @@ DECISION_TOOLS = OrderedDict({
     'read': {"allowed_decisions": ["approve", "reject"]},
     'lists': False,
     'others': False
-
 })
 
 
