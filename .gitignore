@@ -191,4 +191,3 @@ __marimo__/
 
 .env
 !sample_secret.env
-/templates/
