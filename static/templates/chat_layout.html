@@ -1,0 +1,147 @@
+<div class="main-layout">
+
+    <aside class="dashboard-left">
+        <div class="sidebar-header">
+            <button class="btn-new-chat" onclick="createNewChat()">
+                <span>+</span> New Chat
+            </button>
+        </div>
+
+        <div class="nav-links">
+            <h4>Recent Chats</h4>
+            <div id="chatHistoryList" class="chat-history-container"></div>
+        </div>
+        <div class="sidebar-header">
+            <button class="btn-delete-chat" onclick="clearOldestUpdatedChat()">
+                <span>-</span> Delete Oldest Chat
+            </button>
+            <button class="btn-delete-chat" onclick="deleteCurrentChat()">🗑️ Clear Conversation</button>
+        </div>
+
+        <div class="description-area hidden">
+            <h4>Connected Tools</h4>
+            <div class="tool-list">
+                <div class="tool-status-item">
+                    <span class="status-dot online"></span>
+                    Filesystem MCP
+                </div>
+                <div class="tool-status-item">
+                    <span class="status-dot online"></span>
+                    Sequential Web Search
+                </div>
+            </div>
+        </div>
+         <div class="sidebar-footer"
+              style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border);">
+            <p class="hidden" style="font-size: 12px; color: var(--text-muted);">
+                Session: <span id="sessionId" style="font-family: monospace;">-</span>
+            </p>
+        </div>
+        <div class="sidebar-btn">
+            <button class="btn-setting" onclick="">Settings</button>
+            <button class="btn-back-home" onclick="leaveChatLayout()">⬅ Back to Home</button>
+        </div>
+    </aside>
+
+    <div class="container">
+        <div class="header">
+            <select id="modelSelect"></select>
+            <button class="btn-toggle" onclick="toggleReasoning()">Toggle Reasoning</button>
+        </div>
+
+        <div class="chat-wrapper" id="chat-wrapper">
+            <div id="welcome-suggestions" class="suggestions-column">
+                <button class="sugg-btn" onclick="sendQuickPrompt(this)">
+                    <span class="sugg-label">1</span>
+                    <span class="sugg-desc">A factory has two machines:
+                        Machine A produces 60% of items and has a 2% defect rate.
+                        Machine B produces 40% of items and has a 5% defect rate.
+                        If a randomly selected item is defective, what is the probability it came from Machine B?
+                    </span>
+                </button>
+                <button class="sugg-btn" onclick="sendQuickPrompt(this)">
+                    <span class="sugg-label">2</span>
+                    <span class="sugg-desc">
+                        A bat and a ball cost $1.10 in total.
+                        The bat costs $1 more than the ball.
+                        How much does the ball cost?
+                    </span>
+                </button>
+                <button class="sugg-btn" onclick="sendQuickPrompt(this)">
+                    <span class="sugg-label">3</span>
+                    <span class="sugg-desc">
+                        A solution contains 40% alcohol.
+                        How much water must be added to 100 ml of this solution to reduce the concentration to 20%?
+                    </span>
+                </button>
+                <button class="sugg-btn" onclick="sendQuickPrompt(this)">
+                    <span class="sugg-label">4</span>
+                    <span class="sugg-desc">
+                        There are 3 switches outside a room and 1 light bulb inside.
+                        You can toggle switches as you like, but can enter the room only once.
+                        How do you determine which switch controls the bulb?
+                    </span>
+                </button>
+                <button class="sugg-btn" onclick="sendQuickPrompt(this)">
+                    <span class="sugg-label">5</span>
+                    <span class="sugg-desc">
+                        Get statistic of OpenClaw repository and who is owner.
+                    </span>
+                </button>
+                <button class="sugg-btn" onclick="sendQuickPrompt(this)">
+                    <span class="sugg-label">5</span>
+                    <span class="sugg-desc">
+                        Get repo of minhnv4099
+                    </span>
+                </button>
+            </div>
+
+            <div id="messages" class="messages"></div>
+
+            <button id="scrollToTopBtn" class="scroll-top-btn" onclick="scrollToTop()">
+                <span class="arrow">↑</span>
+            </button>
+        </div>
+
+        <div class="input-box">
+            <textarea id="userInput" placeholder="Type message..."></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <aside class="panel-right">
+        <div class="info-card">
+            <h4>Media Upload</h4>
+            <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                <span class="upload-icon">📸</span>
+                <span style="font-size: 13px;">Click or Drag to upload image</span>
+                <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="previewImage(this)">
+            </div>
+            <img id="imagePreview" src="" alt="Preview">
+        </div>
+
+        <div class="info-card">
+            <h4>System Status</h4>
+            <div style="font-size: 13px; display: flex; flex-direction: column; gap: 8px;">
+                <div>
+                    <span>MCP Servers:</span>
+                    <span style="color: var(--accent-green);">Connected (1)</span>
+                </div>
+                <div style="font-size: 13px; display: flex;
+                flex-direction: column; gap: 8px;
+                justify-content: space-between;">
+                    <div>
+                         <span>Session ID:</span>
+                         <span id="displaySessionId"
+                          style="color: var(--text-muted);">-</span>
+                    </div>
+                    <div>
+                        <span>Thread ID:</span>
+                        <span id="displayThreadId"
+                              style="color: var(--text-muted); font-family: monospace; font-size: 10px;">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+</div>
